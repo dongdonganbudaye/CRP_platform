@@ -1102,7 +1102,7 @@ function updateDevicesIn3D() {
        geometry = markRaw(new THREE.SphereGeometry(0.2, 16, 16));
        material = markRaw(new THREE.MeshLambertMaterial({ 
          color: deviceColor.hex,
-         emissive: Math.floor(deviceColor.hex * 0.1)
+         emissive: 0x111111  // 使用固定的暗灰色发光，避免颜色干扰
        }));
      }
     
