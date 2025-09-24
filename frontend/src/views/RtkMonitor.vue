@@ -938,6 +938,9 @@ function init3DScene() {
     canvas.height = 32;
     const ctx = canvas.getContext('2d');
     
+    // 清除画布，设置透明背景
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     ctx.fillStyle = color;
     ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
@@ -945,7 +948,11 @@ function init3DScene() {
     ctx.fillText(text, 32, 16);
     
     const texture = markRaw(new THREE.CanvasTexture(canvas));
-    const spriteMaterial = markRaw(new THREE.SpriteMaterial({ map: texture }));
+    const spriteMaterial = markRaw(new THREE.SpriteMaterial({ 
+      map: texture,
+      transparent: true,
+      alphaTest: 0.1
+    }));
     const sprite = markRaw(new THREE.Sprite(spriteMaterial));
     sprite.scale.set(0.5, 0.25, 1);
     sprite.position.copy(position);
