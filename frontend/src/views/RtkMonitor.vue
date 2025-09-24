@@ -878,9 +878,57 @@ function init3DScene() {
   gridHelper.value.material.opacity = 0.3;
   scene.value.add(gridHelper.value);
   
-  // 添加坐标轴 - 缩小尺寸
-  const axesHelper = markRaw(new THREE.AxesHelper(2));
-  scene.value.add(axesHelper);
+  // 添加自定义坐标轴 - E轴方向调整
+  // E轴 (红色) - 指向X负方向（旋转180度）
+  const eAxisGeometry = markRaw(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(-2, 0, 0)  // E轴指向X负方向
+  ]));
+  const eAxisMaterial = markRaw(new THREE.LineBasicMaterial({ color: 0xff0000 }));
+  const eAxis = markRaw(new THREE.Line(eAxisGeometry, eAxisMaterial));
+  scene.value.add(eAxis);
+  
+  // E轴箭头
+  const eArrowGeometry = markRaw(new THREE.ConeGeometry(0.05, 0.2, 8));
+  const eArrowMaterial = markRaw(new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+  const eArrow = markRaw(new THREE.Mesh(eArrowGeometry, eArrowMaterial));
+  eArrow.position.set(-2, 0, 0);
+  eArrow.rotateZ(Math.PI / 2); // 旋转箭头指向正确方向
+  scene.value.add(eArrow);
+  
+  // N轴 (绿色) - 指向Z正方向
+  const nAxisGeometry = markRaw(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, 2)
+  ]));
+  const nAxisMaterial = markRaw(new THREE.LineBasicMaterial({ color: 0x00ff00 }));
+  const nAxis = markRaw(new THREE.Line(nAxisGeometry, nAxisMaterial));
+  scene.value.add(nAxis);
+  
+  // N轴箭头
+  const nArrowGeometry = markRaw(new THREE.ConeGeometry(0.05, 0.2, 8));
+  const nArrowMaterial = markRaw(new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+  const nArrow = markRaw(new THREE.Mesh(nArrowGeometry, nArrowMaterial));
+  nArrow.position.set(0, 0, 2);
+  nArrow.rotateX(Math.PI / 2); // 旋转箭头180度指向正确方向
+  scene.value.add(nArrow);
+  
+  // U轴 (蓝色) - 指向Y正方向
+  const uAxisGeometry = markRaw(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 2, 0)
+  ]));
+  const uAxisMaterial = markRaw(new THREE.LineBasicMaterial({ color: 0x0000ff }));
+  const uAxis = markRaw(new THREE.Line(uAxisGeometry, uAxisMaterial));
+  scene.value.add(uAxis);
+  
+  // U轴箭头
+  const uArrowGeometry = markRaw(new THREE.ConeGeometry(0.05, 0.2, 8));
+  const uArrowMaterial = markRaw(new THREE.MeshBasicMaterial({ color: 0x0000ff }));
+  const uArrow = markRaw(new THREE.Mesh(uArrowGeometry, uArrowMaterial));
+  uArrow.position.set(0, 2, 0);
+  // U轴箭头默认向上，不需要旋转
+  scene.value.add(uArrow);
   
   // 添加坐标轴标签 (E, N, U)
   // 创建文本几何体的函数
@@ -906,7 +954,7 @@ function init3DScene() {
   }
   
   // 添加E、N、U标签
-  const eLabel = createAxisLabel('E', new THREE.Vector3(2.5, 0, 0), '#ff0000');
+  const eLabel = createAxisLabel('E', new THREE.Vector3(-2.5, 0, 0), '#ff0000');
   const nLabel = createAxisLabel('N', new THREE.Vector3(0, 0, 2.5), '#00ff00');
   const uLabel = createAxisLabel('U', new THREE.Vector3(0, 2.5, 0), '#0000ff');
   
@@ -1004,14 +1052,14 @@ function updateDevicesIn3D() {
     if (device.worldCoords) {
       // 使用已转换的世界坐标（相对于RTK基准点）
       position.set(
-        device.worldCoords.x,
+        -device.worldCoords.x, // E轴取反以匹配坐标轴方向
         device.worldCoords.y,
         device.worldCoords.z
       );
     } else {
       // 回退到原始ENU坐标（配准前）
       position.set(
-        device.data.e || 0,
+        -(device.data.e || 0), // E轴取反以匹配坐标轴方向
         device.data.u || 0,
         device.data.n || 0
       );
@@ -1135,13 +1183,13 @@ function updateDeviceTrajectory(device) {
   const currentPosition = new THREE.Vector3();
   if (device.worldCoords) {
     currentPosition.set(
-      device.worldCoords.x,
+      -device.worldCoords.x, // E轴取反以匹配坐标轴方向
       device.worldCoords.y,
       device.worldCoords.z
     );
   } else {
     currentPosition.set(
-      device.data.e || 0,
+      -(device.data.e || 0), // E轴取反以匹配坐标轴方向
       device.data.u || 0,
       device.data.n || 0
     );
@@ -3017,12 +3065,12 @@ function recordDeviceData(deviceId) {
     
     if (device.worldCoords) {
       // 使用转换后的世界坐标
-      eCoord = device.worldCoords.x;
+      eCoord = -device.worldCoords.x; // E轴取反以匹配坐标轴方向
       nCoord = device.worldCoords.z; // worldCoords.z 对应 N坐标
       uCoord = device.worldCoords.y; // worldCoords.y 对应 U坐标
     } else {
       // 回退到原始ENU坐标
-      eCoord = device.data.e || 0;
+      eCoord = -(device.data.e || 0); // E轴取反以匹配坐标轴方向
       nCoord = device.data.n || 0;
       uCoord = device.data.u || 0;
     }
