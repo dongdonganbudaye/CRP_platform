@@ -79,16 +79,56 @@ class RTKController:
             self.last_data_time[device_id] = 0
             self.device_records[device_id] = []
             
-            # 检查是否有来自该IP的未注册数据，如果有则更新状态
+            # 检查是否有来自该IP的未注册数据，如果有则更新状态并清理
             if ip_address in self.unregistered_ips:
                 logger.info(f"发现IP {ip_address} 的未注册数据，更新设备 {device_id} 状态")
                 data = self.unregistered_ips[ip_address]
                 self.device_data[device_id] = data["data"]
                 self.device_status[device_id] = True
                 self.last_data_time[device_id] = data["time"]
+                
+                # 从未注册列表中移除（避免重复显示）
+                del self.unregistered_ips[ip_address]
+                logger.info(f"已从未注册列表中移除IP {ip_address}")
             
         return {"success": True, "message": f"已注册RTK设备: {name}"}
     
+    def cleanup_device(self, device_id: str) -> Dict:
+        """清理设备状态，为重新注册做准备"""
+        try:
+            with self.status_lock:
+                if device_id in self.devices:
+                    device_ip = self.devices[device_id]["ip"]
+                    
+                    # 将设备信息移回未注册列表，以便重新扫描
+                    if device_id in self.device_data:
+                        self.unregistered_ips[device_ip] = {
+                            "time": self.last_data_time.get(device_id, time.time()),
+                            "device_id": device_id,
+                            "sender_ip": device_ip,
+                            "data_packet_ip": device_ip,
+                            "data": self.device_data[device_id]
+                        }
+                    
+                    # 清理设备数据
+                    del self.devices[device_id]
+                    if device_id in self.device_data:
+                        del self.device_data[device_id]
+                    if device_id in self.device_status:
+                        del self.device_status[device_id]
+                    if device_id in self.last_data_time:
+                        del self.last_data_time[device_id]
+                    if device_id in self.device_records:
+                        del self.device_records[device_id]
+                    
+                    logger.info(f"已清理设备 {device_id}，IP {device_ip} 已移回未注册列表")
+                    return {"success": True, "message": f"已清理设备: {device_id}"}
+                else:
+                    return {"success": False, "message": f"设备 {device_id} 不存在"}
+        except Exception as e:
+            logger.error(f"清理设备失败: {e}")
+            return {"success": False, "message": f"清理设备失败: {str(e)}"}
+
     def unregister_device(self, device_id: str) -> Dict:
         """注销RTK设备"""
         if device_id not in self.devices:
@@ -211,21 +251,55 @@ class RTKController:
             current_time = time.time()
             registered_ips = {device["ip"] for device in self.devices.values()}
             
+            # 添加详细的调试信息
+            logger.info(f"扫描调试信息:")
+            logger.info(f"- 当前时间: {current_time}")
+            logger.info(f"- 已注册设备IP: {registered_ips}")
+            logger.info(f"- 未注册IP数量: {len(self.unregistered_ips)}")
+            
             for ip, data in self.unregistered_ips.items():
-                # 只包含最近5秒内有数据的设备
-                if current_time - data["time"] < 5 and ip not in registered_ips:
-                    # 为未注册的IP生成一个推荐的设备ID
-                    suggested_id = f"rtk_{len(detected_devices) + 1}"
+                time_diff = current_time - data["time"]
+                logger.info(f"- 检查IP {ip}: 最后数据时间差 {time_diff:.1f}秒")
+                
+                # 延长时间窗口到60秒，并允许重新注册异常状态的设备
+                if time_diff < 60:
+                    # 检查是否已注册但可能需要重新注册
+                    device_needs_registration = True
+                    registration_reason = "未注册"
                     
-                    detected_devices.append({
-                        "id": suggested_id,
-                        "ip": ip,
-                        "last_seen": data["time"],
-                        "name": f"RTK设备 ({ip})"
-                    })
+                    if ip in registered_ips:
+                        # 检查已注册设备的状态
+                        for d_id, device in self.devices.items():
+                            if device["ip"] == ip:
+                                # 如果设备离线超过30秒，允许重新注册
+                                if current_time - self.last_data_time.get(d_id, 0) > 30:
+                                    registration_reason = "设备离线,需要重新注册"
+                                    logger.info(f"设备 {ip} 已注册但离线超过30秒，允许重新注册")
+                                else:
+                                    device_needs_registration = False
+                                    logger.info(f"设备 {ip} 已注册且在线，跳过")
+                                break
+                    
+                    if device_needs_registration:
+                        # 为未注册的IP生成一个推荐的设备ID
+                        suggested_id = data.get("device_id", f"rtk_{len(detected_devices) + 1}")
+                        if not suggested_id or suggested_id == "None":
+                            suggested_id = f"rtk_{len(detected_devices) + 1}"
+                        
+                        detected_devices.append({
+                            "id": suggested_id,
+                            "ip": ip,
+                            "last_seen": data["time"],
+                            "name": f"RTK设备 ({ip})",
+                            "reason": registration_reason,
+                            "device_data": data.get("data", {})
+                        })
+                        logger.info(f"添加到扫描结果: {ip} - {registration_reason}")
         
         logger.info(f"扫描完成，发现 {len(detected_devices)} 个未注册的RTK设备")
         return {"success": True, "devices": detected_devices}
+    
+
     
     def _udp_listener(self):
         """UDP监听线程函数"""
@@ -261,12 +335,20 @@ class RTKController:
                             if all(map(np.isfinite, [e, n, u])):
                                 current_time = time.time()
                                 
-                                # 根据设备IP地址查找设备
+                                # 根据设备IP地址查找设备（优先使用发送方IP，然后尝试数据包中的IP）
                                 matched_device_id = None
+                                logger.info(f"尝试匹配设备 - 发送方IP: {sender_ip}, 数据包IP: {device_ip}")
+                                
                                 for d_id, device in self.devices.items():
-                                    if device["ip"] == device_ip:
+                                    logger.info(f"检查已注册设备 {d_id}: IP={device['ip']}")
+                                    if device["ip"] == sender_ip or device["ip"] == device_ip:
                                         matched_device_id = d_id
+                                        logger.info(f"匹配成功! 设备ID: {d_id}")
                                         break
+                                
+                                if not matched_device_id:
+                                    logger.warning(f"未找到匹配的已注册设备! 发送方IP: {sender_ip}, 数据包IP: {device_ip}")
+                                    logger.info(f"当前已注册设备: {[(d_id, device['ip']) for d_id, device in self.devices.items()]}")
                                 
                                 if matched_device_id:
                                     # 已注册设备，更新数据
@@ -294,11 +376,14 @@ class RTKController:
                                     
                                     logger.debug(f"收到已注册RTK设备 {self.devices[matched_device_id]['name']} ({device_ip}) 数据: E={e:.3f}, N={n:.3f}, U={u:.3f}")
                                 else:
-                                    # 未注册设备，记录IP和数据
-                                    logger.info(f"收到来自未注册设备的RTK数据: {device_id} (IP: {device_ip})")
-                                    self.unregistered_ips[device_ip] = {
+                                    # 未注册设备，统一使用发送方IP记录（确保与扫描逻辑一致）
+                                    primary_ip = sender_ip  # 优先使用发送方IP
+                                    logger.info(f"收到来自未注册设备的RTK数据: {device_id} (发送方IP: {sender_ip}, 数据包IP: {device_ip})")
+                                    self.unregistered_ips[primary_ip] = {
                                         "time": current_time,
                                         "device_id": device_id,
+                                        "sender_ip": sender_ip,
+                                        "data_packet_ip": device_ip,
                                         "data": {
                                             "timestamp": tCtrlMs,
                                             "e": e,
@@ -377,6 +462,8 @@ class RTKController:
                                     self.unregistered_ips[sender_ip] = {
                                         "time": current_time,
                                         "device_id": device_id,
+                                        "sender_ip": sender_ip,
+                                        "data_packet_ip": None,  # 旧格式没有数据包IP
                                         "data": {
                                             "timestamp": tCtrlMs,
                                             "e": e,
@@ -402,8 +489,8 @@ class RTKController:
                 current_time = time.time()
                 with self.status_lock:
                     for device_id in self.devices:
-                        # 5秒没有数据认为设备离线
-                        if current_time - self.last_data_time.get(device_id, 0) > 5:
+                        # 30秒没有数据认为设备离线
+                        if current_time - self.last_data_time.get(device_id, 0) > 30:
                             self.device_status[device_id] = False
                             
         except Exception as e:

@@ -501,6 +501,8 @@ async def scan_rtk_devices():
     """扫描网络上的RTK设备"""
     return rtk_controller.scan_for_devices()
 
+
+
 @app.put("/api/rtk/devices/{device_id}")
 async def update_rtk_device(device_id: str, request: Request):
     """更新RTK设备（支持JSON body）"""
@@ -559,6 +561,21 @@ async def delete_rtk_device(device_id: str):
 async def unregister_rtk_device(device_id: str):
     """注销RTK设备"""
     return rtk_controller.unregister_device(device_id)
+
+@app.post("/api/rtk/device/{device_id}/cleanup")
+async def cleanup_rtk_device(device_id: str):
+    """清理RTK设备状态，为重新注册做准备"""
+    try:
+        result = rtk_controller.cleanup_device(device_id)
+        
+        if result.get("success"):
+            return {"success": True, "message": result.get("message", "设备清理成功")}
+        else:
+            return {"success": False, "message": result.get("message", "设备清理失败")}
+        
+    except Exception as e:
+        logger.error(f"清理RTK设备失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/rtk/device/{device_id}/record/start")
 async def start_rtk_recording(device_id: str):

@@ -25,7 +25,7 @@
       <!-- 左侧控制面板 -->
       <div class="control-panel">
         <div class="panel-section">
-          <h3 class="section-title">设备扫描</h3>
+          <h3 class="section-title">设备管理</h3>
           <div class="scan-controls">
             <el-button 
               type="primary" 
@@ -36,6 +36,15 @@
             >
               <i class="el-icon-search"></i>
               {{ isScanning ? '扫描中...' : '扫描RTK设备' }}
+            </el-button>
+            <el-button 
+              type="success" 
+              class="manual-add-btn"
+              @click="showManualAddDialog"
+              :disabled="isScanning"
+            >
+              <i class="el-icon-plus"></i>
+              手动添加设备
             </el-button>
           </div>
           
@@ -76,7 +85,14 @@
                  }"
                  @click="handleDeviceClick(device)">
               <div class="device-header">
-                <div class="device-name">{{ device.name || device.id }}</div>
+                <div class="device-name">
+                  <!-- 颜色指示器 -->
+                  <div class="device-color-indicator" 
+                       :style="{ backgroundColor: getDeviceColor(device.id, device.isBaseStation).css }"
+                       :title="`设备颜色: ${getDeviceColor(device.id, device.isBaseStation).name}`">
+                  </div>
+                  {{ device.name || device.id }}
+                </div>
                 <div class="device-status" :class="device.connected ? 'online' : 'offline'">
                   {{ device.connected ? '在线' : '离线' }}
                 </div>
@@ -126,13 +142,22 @@
               </div>
               <!-- 轨迹控制按钮 -->
               <div v-if="device.connected" class="trajectory-controls">
+                <!-- 数据记录控制按钮 -->
+                <el-button 
+                  size="small" 
+                  :type="device.dataRecording ? 'danger' : 'primary'"
+                  @click="toggleDataRecording(device.id)"
+                  class="data-record-btn"
+                >
+                  {{ device.dataRecording ? '停止记录数据' : '开始记录数据' }}
+                </el-button>
                 <el-button 
                   size="small" 
                   :type="device.recording ? 'danger' : 'success'"
                   @click="toggleRecording(device.id)"
                   class="trajectory-btn"
                 >
-                  {{ device.recording ? '停止记录' : '开始记录' }}
+                  {{ device.recording ? '停止记录轨迹' : '开始记录轨迹' }}
                 </el-button>
                 <el-button 
                   size="small" 
@@ -211,6 +236,18 @@
                 <span class="model-size">{{ model.format }}</span>
               </div>
               <div class="model-actions">
+                <!-- 新增：单独显示/隐藏按钮 -->
+                <el-button 
+                  size="small" 
+                  :type="model.visible !== false ? 'success' : 'warning'"
+                  circle
+                  @click="toggleModelVisibility(model.id)"
+                  :title="model.visible !== false ? '隐藏模型' : '显示模型'"
+                >
+                  <i :class="model.visible !== false ? 'el-icon-view' : 'el-icon-hide'"></i>
+                </el-button>
+                
+                <!-- 现有的编辑按钮 -->
                 <el-button 
                   size="small" 
                   type="info"
@@ -219,6 +256,8 @@
                 >
                   <i class="el-icon-edit"></i>
                 </el-button>
+                
+                <!-- 现有的删除按钮 -->
                 <el-button 
                   size="small" 
                   type="danger"
@@ -546,6 +585,48 @@
       </div>
     </div>
 
+    <!-- 数据记录配置对话框 -->
+    <el-dialog
+      v-model="saveConfigDialogVisible"
+      title="数据记录配置"
+      width="450px"
+      class="save-config-dialog"
+      :close-on-click-modal="false"
+    >
+      <div class="save-config-content">
+        <p>配置数据文件保存设置：</p>
+        
+        <el-form label-width="100px">
+          <el-form-item label="基础文件名">
+            <el-input 
+              v-model="baseSaveFileName" 
+              placeholder="例如：RTK_测试数据"
+            />
+            <div class="filename-preview">
+              预览：{{ baseSaveFileName || '文件名' }}_batch_001.csv
+            </div>
+          </el-form-item>
+          
+          <el-form-item label="导出说明">
+            <div class="export-info">
+              <p>• 每1000条数据自动导出一个文件</p>
+              <p>• 停止记录时自动导出剩余数据</p>
+              <p>• 文件将下载到浏览器默认下载文件夹</p>
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="cancelSaveConfig">取消</el-button>
+          <el-button @click="confirmSaveConfig" type="primary">
+            开始记录
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
     <!-- 设备配置对话框 -->
     <el-dialog
       v-model="configDialogVisible"
@@ -592,6 +673,13 @@
           </el-button>
           <el-button 
             v-if="isEditing" 
+            type="warning" 
+            @click="cleanupDevice"
+          >
+            清理状态
+          </el-button>
+          <el-button 
+            v-if="isEditing" 
             type="danger" 
             @click="deleteDevice"
           >
@@ -618,6 +706,7 @@ import { calculateKabschAlignment, assessAlignmentQuality } from '@/utils/kabsch
 const rtkDevices = ref({});
 const scanResults = ref([]);
 const isScanning = ref(false);
+
 const wsConnected = ref(false);
 const is3dViewReady = ref(false);
 const container3d = ref(null);
@@ -632,6 +721,21 @@ const isUploadingModel = ref(false);
 const modelOpacity = ref(0.7);
 const showModels = ref(true);
 const modelLayerMode = ref('overlay'); // 'overlay', 'design', 'actual'
+
+// RTK设备颜色配置
+const RTK_DEVICE_COLORS = [
+  { name: '蓝色', hex: 0x3498db, css: '#3498db' },
+  { name: '绿色', hex: 0x2ecc71, css: '#2ecc71' },
+  { name: '橙色', hex: 0xe67e22, css: '#e67e22' },
+  { name: '紫色', hex: 0x9b59b6, css: '#9b59b6' },
+  { name: '红色', hex: 0xe74c3c, css: '#e74c3c' },
+  { name: '青色', hex: 0x1abc9c, css: '#1abc9c' },
+  { name: '黄色', hex: 0xf1c40f, css: '#f1c40f' },
+  { name: '粉色', hex: 0xe91e63, css: '#e91e63' }
+];
+
+// 设备颜色分配管理
+const deviceColorAssignments = ref({});
 
 // 场景状态
 const scene = ref(null);
@@ -710,6 +814,21 @@ const addingPointPair = ref(false);
 const addPointPairStep = ref(1);
 const currentPointPair = ref(null);
 const performingAlignment = ref(false);
+
+// 模型变换状态追踪
+const modelTransformApplied = ref(false); // 追踪模型是否已应用配准变换
+
+// 数据记录功能状态
+const dataRecordingDevices = ref(new Set()); // 正在记录数据的设备集合
+const dataRecordIntervals = ref({}); // 存储各设备的定时器
+const recordedData = ref({}); // 存储记录的数据 {deviceId: [dataArray]}
+const recordingStartTimes = ref({}); // 存储开始记录的时间
+
+// 数据记录配置状态
+const saveConfigDialogVisible = ref(false);
+const baseSaveFileName = ref(''); // 基础文件名
+const currentBatchNumber = ref({}); // 每个设备的批次号 {deviceId: number}
+const currentRecordingDeviceId = ref(''); // 当前正在配置的设备ID
 
 // 计算属性
 const canCompleteStage1 = computed(() => {
@@ -879,26 +998,40 @@ function updateDevicesIn3D() {
     
     visibleDeviceCount++;
     
-    const position = markRaw(new THREE.Vector3(
-      device.data.e || 0,
-      device.data.u || 0,
-      device.data.n || 0
-    ));
+    // 优先使用转换后的世界坐标，如果没有则使用原始坐标
+    const position = markRaw(new THREE.Vector3());
+    
+    if (device.worldCoords) {
+      // 使用已转换的世界坐标（相对于RTK基准点）
+      position.set(
+        device.worldCoords.x,
+        device.worldCoords.y,
+        device.worldCoords.z
+      );
+    } else {
+      // 回退到原始ENU坐标（配准前）
+      position.set(
+        device.data.e || 0,
+        device.data.u || 0,
+        device.data.n || 0
+      );
+    }
     
     let geometry, material;
+    const deviceColor = getDeviceColor(device.id, device.isBaseStation);
     
     if (device.isBaseStation) {
        // 基站：白色球体
        geometry = markRaw(new THREE.SphereGeometry(0.3, 16, 16));
        material = markRaw(new THREE.MeshLambertMaterial({ 
-         color: 0xffffff,
+         color: deviceColor.hex,
          emissive: 0x222222
        }));
        
        // 基站覆盖范围
        const rangeGeometry = markRaw(new THREE.RingGeometry(4.5, 5, 32));
        const rangeMaterial = markRaw(new THREE.MeshBasicMaterial({ 
-         color: 0xffffff, 
+         color: deviceColor.hex, 
          transparent: true, 
          opacity: 0.1,
          side: THREE.DoubleSide
@@ -910,11 +1043,11 @@ function updateDevicesIn3D() {
        scene.value.add(rangeMesh);
        baseMeshes.value.push(rangeMesh);
      } else {
-       // 移动站：绿色球体
+       // 移动站：使用分配的颜色
        geometry = markRaw(new THREE.SphereGeometry(0.2, 16, 16));
        material = markRaw(new THREE.MeshLambertMaterial({ 
-         color: 0x00ff88,
-         emissive: 0x002211
+         color: deviceColor.hex,
+         emissive: Math.floor(deviceColor.hex * 0.1)
        }));
      }
     
@@ -933,8 +1066,8 @@ function updateDevicesIn3D() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-         // 绘制边框
-     ctx.strokeStyle = device.isBaseStation ? '#ffffff' : '#00ff88';
+         // 绘制边框 - 使用设备分配的颜色
+     ctx.strokeStyle = deviceColor.css;
      ctx.lineWidth = 2;
      ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
     
@@ -955,6 +1088,34 @@ function updateDevicesIn3D() {
     scene.value.add(mesh);
     deviceMeshes.value[device.id] = mesh;
     
+    // 如果是RTK基准点，添加特殊标识（红色外框）
+    if (alignmentManager.value.rtkBasePoint && 
+        device.id === alignmentManager.value.rtkBasePoint.deviceId) {
+      const ringGeometry = markRaw(new THREE.RingGeometry(0.25, 0.35, 16));
+      const ringMaterial = markRaw(new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        transparent: true, 
+        opacity: 0.8,
+        side: THREE.DoubleSide
+      }));
+      const ringMesh = markRaw(new THREE.Mesh(ringGeometry, ringMaterial));
+      ringMesh.position.copy(position);
+      ringMesh.position.y += 0.05; // 稍微提升避免重叠
+      ringMesh.rotation.x = -Math.PI / 2;
+      scene.value.add(ringMesh);
+      baseMeshes.value.push(ringMesh);
+      
+      // 验证基准点是否在原点
+      if (device.worldCoords && 
+          (Math.abs(device.worldCoords.x) > 0.001 || 
+           Math.abs(device.worldCoords.y) > 0.001 || 
+           Math.abs(device.worldCoords.z) > 0.001)) {
+        console.warn(`RTK基准点不在原点! 位置: (${device.worldCoords.x.toFixed(3)}, ${device.worldCoords.y.toFixed(3)}, ${device.worldCoords.z.toFixed(3)})`);
+      } else {
+        console.log('RTK基准点验证: 已正确位于原点');
+      }
+    }
+    
     console.log(`已添加设备 ${device.id} 到3D场景，位置:`, position);
     
     // 更新轨迹
@@ -969,11 +1130,22 @@ function updateDeviceTrajectory(device) {
   if (!device.connected || !device.data || !device.recording) return;
   
   const deviceId = device.id;
-  const currentPosition = new THREE.Vector3(
-    device.data.e || 0,
-    device.data.u || 0,
-    device.data.n || 0
-  );
+  
+  // 优先使用转换后的世界坐标，如果没有则使用原始坐标
+  const currentPosition = new THREE.Vector3();
+  if (device.worldCoords) {
+    currentPosition.set(
+      device.worldCoords.x,
+      device.worldCoords.y,
+      device.worldCoords.z
+    );
+  } else {
+    currentPosition.set(
+      device.data.e || 0,
+      device.data.u || 0,
+      device.data.n || 0
+    );
+  }
   
   // 初始化轨迹点数组
   if (!trajectoryPoints.value[deviceId]) {
@@ -1006,10 +1178,13 @@ function updateTrajectoryLine(deviceId, points, isBaseStation) {
     scene.value.remove(trajectoryLines.value[deviceId]);
   }
   
+  // 获取设备颜色
+  const deviceColor = getDeviceColor(deviceId, isBaseStation);
+  
   // 创建新的轨迹线
   const geometry = markRaw(new THREE.BufferGeometry().setFromPoints(points));
   const material = markRaw(new THREE.LineBasicMaterial({
-    color: isBaseStation ? 0xffffff : 0x00ff88,
+    color: deviceColor.hex,
     linewidth: 2,
     transparent: true,
     opacity: 0.8
@@ -1025,14 +1200,60 @@ async function fetchRtkDevices() {
   try {
     const response = await axios.get(`${apiBaseUrl}/api/rtk/devices`);
     if (response.data) {
-      // 确保每个设备都有showIn3D属性
-      Object.values(response.data).forEach(device => {
-        if (device.showIn3D === undefined) {
-          device.showIn3D = true; // 默认显示
+      // 检测断开连接的设备，释放颜色分配
+      const previousDeviceIds = Object.keys(rtkDevices.value);
+      const currentDeviceIds = Object.keys(response.data);
+      
+      // 找出已断开连接的设备
+      const disconnectedDevices = previousDeviceIds.filter(deviceId => 
+        !currentDeviceIds.includes(deviceId) || 
+        (rtkDevices.value[deviceId]?.connected && !response.data[deviceId]?.connected)
+      );
+      
+      // 释放断开连接设备的颜色分配
+      disconnectedDevices.forEach(deviceId => {
+        console.log(`设备 ${deviceId} 已断开连接，释放颜色分配`);
+        releaseDeviceColor(deviceId);
+      });
+      
+      // 保存当前的worldCoords和其他本地状态
+      const currentWorldCoords = {};
+      const currentShowIn3D = {};
+      
+      // 备份现有的worldCoords和showIn3D状态
+      Object.values(rtkDevices.value).forEach(device => {
+        if (device.worldCoords) {
+          currentWorldCoords[device.id] = device.worldCoords;
+        }
+        if (device.showIn3D !== undefined) {
+          currentShowIn3D[device.id] = device.showIn3D;
         }
       });
       
+      // 更新设备数据，但保护本地计算的字段
+      Object.values(response.data).forEach(device => {
+        // 恢复worldCoords
+        if (currentWorldCoords[device.id]) {
+          device.worldCoords = currentWorldCoords[device.id];
+        }
+        
+        // 恢复showIn3D状态
+        if (currentShowIn3D[device.id] !== undefined) {
+          device.showIn3D = currentShowIn3D[device.id];
+        } else if (device.showIn3D === undefined) {
+          device.showIn3D = true; // 默认显示
+        }
+        
+        // 恢复数据记录状态
+        device.dataRecording = dataRecordingDevices.value.has(device.id);
+      });
+      
       rtkDevices.value = response.data;
+      
+      // 如果有RTK基准点设置，重新应用坐标转换
+      if (alignmentManager.value.rtkBasePoint) {
+        updateAllRtkWorldCoords();
+      }
       
       console.log('已获取RTK设备:', Object.keys(rtkDevices.value));
       console.log('设备详情:', rtkDevices.value);
@@ -1074,6 +1295,8 @@ async function scanRtkDevices() {
   }
 }
 
+
+
 // 显示配置对话框
 function showConfigDialog(device) {
   console.log('显示配置对话框，设备:', device);
@@ -1081,6 +1304,21 @@ function showConfigDialog(device) {
     deviceId: device.id,
     name: device.name || device.id,
     ip: device.ip,
+    deviceNumber: '1',
+    isBaseStation: false,
+    showIn3D: true
+  };
+  isEditing.value = false;
+  configDialogVisible.value = true;
+}
+
+// 显示手动添加设备对话框
+function showManualAddDialog() {
+  console.log('显示手动添加设备对话框');
+  configForm.value = {
+    deviceId: '',
+    name: '',
+    ip: '',
     deviceNumber: '1',
     isBaseStation: false,
     showIn3D: true
@@ -1174,6 +1412,39 @@ async function deleteDevice() {
     if (error !== 'cancel') {
       console.error('删除设备失败:', error);
       ElMessage.error('删除设备失败');
+    }
+  }
+}
+
+// 清理设备状态（为重新注册做准备）
+async function cleanupDevice() {
+  try {
+    await ElMessageBox.confirm(
+      '此操作将清理设备状态并将其移回未注册列表，以便重新扫描和注册。确定要继续吗？', 
+      '清理设备状态', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    );
+    
+    const response = await axios.post(`${apiBaseUrl}/api/rtk/device/${configForm.value.deviceId}/cleanup`);
+    
+    if (response.data && response.data.success) {
+      ElMessage.success('设备状态已清理，可重新扫描');
+      configDialogVisible.value = false;
+      await fetchRtkDevices();
+      // 自动触发一次扫描
+      setTimeout(() => {
+        scanRtkDevices();
+      }, 1000);
+    } else {
+      ElMessage.error('设备状态清理失败: ' + (response.data.message || '未知错误'));
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('清理设备状态失败:', error);
+      ElMessage.error('清理设备状态失败');
     }
   }
 }
@@ -1388,6 +1659,9 @@ async function loadModelToScene(modelInfo) {
           loadedModels.value[modelInfo.id] = mesh;
           
           console.log(`STL模型 ${modelInfo.name} 加载成功`);
+          
+          // 直接应用已保存的配准变换（如果存在）
+          applySavedTransformToModel(mesh);
         },
         (progress) => {
           console.log(`加载进度: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
@@ -1440,6 +1714,9 @@ async function loadModelToScene(modelInfo) {
           loadedModels.value[modelInfo.id] = model;
           
           console.log(`模型 ${modelInfo.name} 加载成功`);
+          
+          // 直接应用已保存的配准变换（如果存在）
+          applySavedTransformToModel(model);
         },
         (progress) => {
           console.log(`加载进度: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
@@ -1486,8 +1763,12 @@ async function deleteModel(modelId) {
 }
 
 function updateModelVisibility(visible) {
-  Object.values(loadedModels.value).forEach(model => {
-    model.visible = visible;
+  // 只对当前可见状态为true的模型应用全局设置
+  Object.entries(loadedModels.value).forEach(([modelId, model]) => {
+    const modelInfo = buildingModels.value.find(m => m.id === modelId);
+    if (modelInfo && modelInfo.visible !== false) {
+      model.visible = visible;
+    }
   });
 }
 
@@ -1532,6 +1813,84 @@ function updateModelLayerMode(mode) {
   }
 }
 
+// 获取设备颜色
+function getDeviceColor(deviceId, isBaseStation = false) {
+  // 基站始终使用白色
+  if (isBaseStation) {
+    return { hex: 0xffffff, css: '#ffffff', name: '白色' };
+  }
+  
+  // 检查是否已分配颜色
+  if (deviceColorAssignments.value[deviceId]) {
+    return deviceColorAssignments.value[deviceId];
+  }
+  
+  // 为新设备分配颜色
+  const assignedColors = Object.values(deviceColorAssignments.value);
+  const availableColors = RTK_DEVICE_COLORS.filter(color => 
+    !assignedColors.some(assigned => assigned.hex === color.hex)
+  );
+  
+  if (availableColors.length > 0) {
+    deviceColorAssignments.value[deviceId] = availableColors[0];
+    return availableColors[0];
+  }
+  
+  // 如果所有颜色都已分配，循环使用
+  const colorIndex = Object.keys(deviceColorAssignments.value).length % RTK_DEVICE_COLORS.length;
+  deviceColorAssignments.value[deviceId] = RTK_DEVICE_COLORS[colorIndex];
+  return RTK_DEVICE_COLORS[colorIndex];
+}
+
+// 释放设备颜色分配
+function releaseDeviceColor(deviceId) {
+  delete deviceColorAssignments.value[deviceId];
+}
+
+// 切换单个模型的显示/隐藏状态
+async function toggleModelVisibility(modelId) {
+  try {
+    // 找到对应的模型
+    const model = buildingModels.value.find(m => m.id === modelId);
+    if (!model) return;
+    
+    // 切换可见状态
+    const newVisibility = model.visible !== false ? false : true;
+    model.visible = newVisibility;
+    
+    // 更新3D场景中的模型显示
+    if (loadedModels.value[modelId]) {
+      loadedModels.value[modelId].visible = newVisibility;
+    }
+    
+    // 如果当前处于顶点选择模式，更新顶点显示
+    if (vertexSelectionMode.value) {
+      console.log(`模型 ${modelId} 可见性已改变，更新顶点显示`);
+      updateVertexDisplay();
+    }
+    
+    // 同步到后端
+    try {
+      const response = await axios.put(`${apiBaseUrl}/api/models/${modelId}`, {
+        ...model,
+        visible: newVisibility
+      });
+      
+      if (response.data && response.data.success) {
+        ElMessage.success(newVisibility ? '模型已显示' : '模型已隐藏');
+      } else {
+        ElMessage.error('更新模型状态失败，但本地显示已更新');
+      }
+    } catch (apiError) {
+      console.warn('后端API调用失败，仅更新本地状态:', apiError);
+      ElMessage.success(newVisibility ? '模型已显示' : '模型已隐藏');
+    }
+  } catch (error) {
+    console.error('切换模型可见性失败:', error);
+    ElMessage.error('操作失败');
+  }
+}
+
 function editModel(model) {
   // TODO: 实现模型编辑功能
   ElMessage.info('模型编辑功能开发中...');
@@ -1561,7 +1920,20 @@ function toggleVertexSelection(enabled) {
 function extractModelVertices() {
   modelVertices.value = [];
   
-  Object.values(loadedModels.value).forEach(model => {
+  Object.entries(loadedModels.value).forEach(([modelId, model]) => {
+    // 检查模型是否可见
+    const modelInfo = buildingModels.value.find(m => m.id === modelId);
+    if (!modelInfo || modelInfo.visible === false) {
+      console.log(`跳过隐藏模型 ${modelId} 的顶点提取`);
+      return;
+    }
+    
+    // 同时检查3D场景中模型的可见性
+    if (!model.visible) {
+      console.log(`跳过3D场景中隐藏的模型 ${modelId}`);
+      return;
+    }
+    
     const vertices = [];
     
     model.traverse((child) => {
@@ -1587,7 +1959,7 @@ function extractModelVertices() {
     modelVertices.value.push(...vertices);
   });
   
-  console.log(`提取了 ${modelVertices.value.length} 个顶点`);
+  console.log(`从可见模型中提取了 ${modelVertices.value.length} 个顶点`);
 }
 
 // 显示顶点
@@ -1715,6 +2087,12 @@ function setBimBasePoint(vertex) {
     updateVertexDisplay();
   }
   
+  // 标记模型已应用变换（新增）
+  modelTransformApplied.value = true;
+  
+  // 保存状态
+  saveAlignmentState();
+  
   ElMessage.success('BIM基准点已设置并对齐到原点');
   console.log('BIM基准点已设置:', vertex);
 }
@@ -1740,13 +2118,28 @@ function setRtkBasePoint(deviceId) {
   // 重新计算所有RTK点的世界坐标
   updateAllRtkWorldCoords();
   
+  // 保存状态
+  saveAlignmentState();
+  
   ElMessage.success('RTK基准点已设置');
   console.log('RTK基准点已设置:', alignmentManager.value.rtkBasePoint);
 }
 
 // 更新所有RTK点的世界坐标
 function updateAllRtkWorldCoords() {
-  if (!alignmentManager.value.rtkBasePoint) return;
+  if (!alignmentManager.value.rtkBasePoint) {
+    console.warn('没有RTK基准点，跳过世界坐标更新');
+    return;
+  }
+  
+  console.log('更新RTK世界坐标, 基准点:', alignmentManager.value.rtkBasePoint);
+  
+  // 检查基准点设备是否仍然存在
+  const baseDevice = rtkDevices.value[alignmentManager.value.rtkBasePoint.deviceId];
+  if (!baseDevice || !baseDevice.data) {
+    console.warn(`RTK基准点设备 ${alignmentManager.value.rtkBasePoint.deviceId} 不存在或无数据`);
+    return;
+  }
   
   Object.values(rtkDevices.value).forEach(device => {
     if (device.data) {
@@ -1763,11 +2156,278 @@ function updateAllRtkWorldCoords() {
         y: offset.u,
         z: offset.n
       };
+      
+      // 添加调试信息
+      console.log(`设备 ${device.id}:`, {
+        原始坐标: { e: device.data.e, n: device.data.n, u: device.data.u },
+        偏移量: offset,
+        世界坐标: device.worldCoords,
+        是否为基准点: device.id === alignmentManager.value.rtkBasePoint.deviceId
+      });
     }
   });
   
   // 更新3D显示
   updateDevicesIn3D();
+}
+
+// 检查RTK基准点坐标是否发生变化
+function checkRtkBasePointUpdate() {
+  if (!alignmentManager.value.rtkBasePoint) return;
+  
+  const baseDevice = rtkDevices.value[alignmentManager.value.rtkBasePoint.deviceId];
+  if (!baseDevice || !baseDevice.data) return;
+  
+  const currentCoords = {
+    e: baseDevice.data.e,
+    n: baseDevice.data.n,
+    u: baseDevice.data.u
+  };
+  
+  const originalCoords = alignmentManager.value.rtkBasePoint.originalCoords;
+  
+  // 检查基准点坐标是否发生显著变化（>1cm）
+  const deltaE = Math.abs(currentCoords.e - originalCoords.e);
+  const deltaN = Math.abs(currentCoords.n - originalCoords.n);
+  const deltaU = Math.abs(currentCoords.u - originalCoords.u);
+  
+  if (deltaE > 0.01 || deltaN > 0.01 || deltaU > 0.01) {
+    console.warn('RTK基准点坐标发生变化:', {
+      原始坐标: originalCoords,
+      当前坐标: currentCoords,
+      变化量: { deltaE, deltaN, deltaU }
+    });
+    
+    // 可选：自动更新基准点坐标或提示用户
+    // updateRtkBasePointCoords(currentCoords);
+  }
+}
+
+// 保存对齐状态到localStorage
+function saveAlignmentState() {
+  if (alignmentManager.value.rtkBasePoint && alignmentManager.value.bimBasePoint) {
+    const alignmentState = {
+      rtkBasePoint: alignmentManager.value.rtkBasePoint,
+      bimBasePoint: {
+        x: alignmentManager.value.bimBasePoint.x,
+        y: alignmentManager.value.bimBasePoint.y,
+        z: alignmentManager.value.bimBasePoint.z
+      },
+      stage1Complete: alignmentManager.value.stage1Complete,
+      stage2Complete: alignmentManager.value.stage2Complete,
+      // 保存变换矩阵
+      stage1Transform: {
+        elements: Array.from(alignmentManager.value.stage1Transform.elements)
+      },
+      kabschTransform: alignmentManager.value.kabschTransform ? {
+        elements: Array.from(alignmentManager.value.kabschTransform.elements)
+      } : null,
+      finalTransform: alignmentManager.value.finalTransform ? {
+        elements: Array.from(alignmentManager.value.finalTransform.elements)
+      } : null,
+      // 保存特征点对数据
+      pointPairs: pointPairs.value.map(pair => ({
+        id: pair.id,
+        bimPoint: {
+          x: pair.bimPoint.x,
+          y: pair.bimPoint.y,
+          z: pair.bimPoint.z
+        },
+        rtkPoint: {
+          x: pair.rtkPoint.x,
+          y: pair.rtkPoint.y,
+          z: pair.rtkPoint.z
+        }
+      })),
+      // 新增：保存模型变换应用状态
+      modelTransformApplied: modelTransformApplied.value,
+      timestamp: Date.now()
+    };
+    
+    localStorage.setItem('rtk_alignment_state', JSON.stringify(alignmentState));
+    console.log('配准状态已保存:', alignmentState);
+  }
+}
+
+// 从localStorage恢复对齐状态
+function restoreAlignmentState() {
+  try {
+    const savedState = localStorage.getItem('rtk_alignment_state');
+    if (savedState) {
+      const alignmentState = JSON.parse(savedState);
+      
+      // 检查状态是否过期（24小时）
+      const isExpired = Date.now() - alignmentState.timestamp > 24 * 60 * 60 * 1000;
+      if (isExpired) {
+        localStorage.removeItem('rtk_alignment_state');
+        return false;
+      }
+      
+      // 恢复基本状态
+      alignmentManager.value.rtkBasePoint = alignmentState.rtkBasePoint;
+      alignmentManager.value.bimBasePoint = new THREE.Vector3(
+        alignmentState.bimBasePoint.x,
+        alignmentState.bimBasePoint.y,
+        alignmentState.bimBasePoint.z
+      );
+      alignmentManager.value.stage1Complete = alignmentState.stage1Complete;
+      alignmentManager.value.stage2Complete = alignmentState.stage2Complete || false;
+      
+      // 恢复变换矩阵
+      if (alignmentState.stage1Transform) {
+        alignmentManager.value.stage1Transform.fromArray(alignmentState.stage1Transform.elements);
+      }
+      
+      if (alignmentState.kabschTransform) {
+        alignmentManager.value.kabschTransform = new THREE.Matrix4();
+        alignmentManager.value.kabschTransform.fromArray(alignmentState.kabschTransform.elements);
+      }
+      
+      if (alignmentState.finalTransform) {
+        alignmentManager.value.finalTransform = new THREE.Matrix4();
+        alignmentManager.value.finalTransform.fromArray(alignmentState.finalTransform.elements);
+      }
+      
+      // 恢复特征点对
+      if (alignmentState.pointPairs) {
+        pointPairs.value = alignmentState.pointPairs.map(pair => ({
+          id: pair.id,
+          bimPoint: new THREE.Vector3(pair.bimPoint.x, pair.bimPoint.y, pair.bimPoint.z),
+          rtkPoint: new THREE.Vector3(pair.rtkPoint.x, pair.rtkPoint.y, pair.rtkPoint.z)
+        }));
+      }
+      
+      // 恢复模型变换应用状态
+      modelTransformApplied.value = alignmentState.modelTransformApplied || false;
+      
+      console.log('配准状态已恢复:', alignmentState);
+      console.log('模型变换应用状态:', modelTransformApplied.value);
+      
+      // 重新应用坐标转换
+      if (alignmentManager.value.rtkBasePoint) {
+        updateAllRtkWorldCoords();
+      }
+      
+      return true;
+    }
+  } catch (error) {
+    console.error('恢复配准状态失败:', error);
+    localStorage.removeItem('rtk_alignment_state');
+  }
+  
+  return false;
+}
+
+// 应用保存的变换到所有BIM模型
+function applyAlignmentToModels() {
+  if (!loadedModels.value || Object.keys(loadedModels.value).length === 0) {
+    console.warn('没有已加载的模型，跳过变换应用');
+    return;
+  }
+  
+  console.log('开始应用配准变换到BIM模型...');
+  
+  // 应用阶段1变换（BIM基准点对齐）
+  if (alignmentManager.value.stage1Complete && alignmentManager.value.stage1Transform) {
+    console.log('应用阶段1变换（基准点对齐）');
+    Object.values(loadedModels.value).forEach(model => {
+      model.applyMatrix4(alignmentManager.value.stage1Transform);
+    });
+  }
+  
+  // 应用阶段2变换（Kabsch精确配准）
+  if (alignmentManager.value.stage2Complete && alignmentManager.value.kabschTransform) {
+    console.log('应用阶段2变换（Kabsch配准）');
+    Object.values(loadedModels.value).forEach(model => {
+      model.applyMatrix4(alignmentManager.value.kabschTransform);
+    });
+  }
+  
+  // 更新顶点显示（如果处于顶点选择模式）
+  if (vertexSelectionMode.value) {
+    updateVertexDisplay();
+  }
+  
+  console.log('BIM模型变换应用完成');
+}
+
+// 检查并应用配准状态到模型（仅用于手动恢复）
+function applyRestoredAlignment(showMessage = true) {
+  // 检查是否有恢复的配准状态需要应用
+  if (alignmentManager.value.stage1Complete || alignmentManager.value.stage2Complete) {
+    console.log('检测到已恢复的配准状态');
+    
+    // 只在模型未应用变换时才应用变换
+    if (!modelTransformApplied.value) {
+      console.log('模型未应用变换，开始应用配准变换到模型');
+      applyAlignmentToModels();
+      modelTransformApplied.value = true;
+    } else {
+      console.log('模型已应用变换，跳过重复应用');
+    }
+    
+    // 只在需要时显示恢复信息
+    if (showMessage) {
+      let message = '';
+      if (alignmentManager.value.stage1Complete) {
+        message += '阶段1配准已恢复';
+      }
+      if (alignmentManager.value.stage2Complete) {
+        message += alignmentManager.value.stage1Complete ? '，阶段2配准已恢复' : '阶段2配准已恢复';
+      }
+      
+      ElMessage.success(message);
+    }
+  }
+}
+
+// 对单个加载的模型应用配准变换
+function applyAlignmentToLoadedModel(model) {
+  // 只在配准状态已恢复时应用变换
+  if (alignmentManager.value.stage1Complete && alignmentManager.value.stage1Transform) {
+    console.log('对新加载的模型应用阶段1变换');
+    model.applyMatrix4(alignmentManager.value.stage1Transform);
+  }
+  
+  if (alignmentManager.value.stage2Complete && alignmentManager.value.kabschTransform) {
+    console.log('对新加载的模型应用阶段2变换');
+    model.applyMatrix4(alignmentManager.value.kabschTransform);
+  }
+}
+
+// 对单个模型应用已保存的配准变换（无提示）
+function applySavedTransformToModel(model) {
+  // 从localStorage检查是否有保存的配准状态
+  try {
+    const savedState = localStorage.getItem('rtk_alignment_state');
+    if (savedState) {
+      const alignmentState = JSON.parse(savedState);
+      
+      // 检查状态是否过期（24小时）
+      const isExpired = Date.now() - alignmentState.timestamp > 24 * 60 * 60 * 1000;
+      if (isExpired) {
+        return; // 过期则不应用
+      }
+      
+      // 应用阶段1变换（如果存在）
+      if (alignmentState.stage1Complete && alignmentState.stage1Transform) {
+        const stage1Matrix = new THREE.Matrix4();
+        stage1Matrix.fromArray(alignmentState.stage1Transform.elements);
+        model.applyMatrix4(stage1Matrix);
+        console.log('对模型应用已保存的阶段1变换');
+      }
+      
+      // 应用阶段2变换（如果存在）
+      if (alignmentState.stage2Complete && alignmentState.kabschTransform) {
+        const kabschMatrix = new THREE.Matrix4();
+        kabschMatrix.fromArray(alignmentState.kabschTransform.elements);
+        model.applyMatrix4(kabschMatrix);
+        console.log('对模型应用已保存的阶段2变换');
+      }
+    }
+  } catch (error) {
+    console.error('应用保存的变换失败:', error);
+  }
 }
 
 // 完成阶段1配准
@@ -1777,13 +2437,32 @@ function completeStage1() {
     return;
   }
   
+  // 验证坐标系对齐
+  const rtkBaseDevice = rtkDevices.value[alignmentManager.value.rtkBasePoint.deviceId];
+  if (rtkBaseDevice && rtkBaseDevice.worldCoords) {
+    const distance = Math.sqrt(
+      Math.pow(rtkBaseDevice.worldCoords.x, 2) + 
+      Math.pow(rtkBaseDevice.worldCoords.y, 2) + 
+      Math.pow(rtkBaseDevice.worldCoords.z, 2)
+    );
+    
+    if (distance > 0.001) {
+      console.warn(`坐标系对齐验证失败: RTK基准点距离原点 ${distance.toFixed(4)}m`);
+    } else {
+      console.log('坐标系对齐验证成功: RTK基准点已位于原点');
+    }
+  }
+  
   alignmentManager.value.stage1Complete = true;
+  
+  // 保存配准状态
+  saveAlignmentState();
   
   // 关闭顶点选择模式
   vertexSelectionMode.value = false;
   toggleVertexSelection(false);
   
-  ElMessage.success('阶段1配准完成！可以开始精确配准');
+  ElMessage.success('阶段1配准完成！BIM基准点和RTK基准点已对齐到原点');
 }
 
 // 重置阶段1
@@ -1806,6 +2485,13 @@ function resetStage1() {
   Object.values(rtkDevices.value).forEach(device => {
     delete device.worldCoords;
   });
+  
+  // 重置模型变换应用状态（新增）
+  modelTransformApplied.value = false;
+  
+  // 清除保存的配准状态（新增）
+  localStorage.removeItem('rtk_alignment_state');
+  console.log('配准状态已清除');
   
   updateDevicesIn3D();
   ElMessage.info('阶段1已重置');
@@ -1915,7 +2601,7 @@ async function performKabschAlignment() {
       alignmentManager.value.stage1Transform
     );
     
-    // 应用变换到BIM模型
+    // 应用变换到所有BIM模型
     Object.values(loadedModels.value).forEach(model => {
       model.applyMatrix4(alignmentManager.value.kabschTransform);
     });
@@ -1931,6 +2617,14 @@ async function performKabschAlignment() {
     
     alignmentManager.value.stage2Complete = true;
     alignmentManager.value.qualityAssessment = qualityAssessment;
+    
+    // 更新模型变换状态（如果还没有标记为已应用）
+    if (!modelTransformApplied.value) {
+      modelTransformApplied.value = true;
+    }
+    
+    // 保存配准状态（新增）
+    saveAlignmentState();
     
     // 显示成功消息
     const rms = kabschResult.errorStats.rms;
@@ -1989,6 +2683,9 @@ function resetStage2() {
   if (vertexSelectionMode.value) {
     updateVertexDisplay();
   }
+  
+  // 保存配准状态（新增）
+  saveAlignmentState();
   
   ElMessage.info('阶段2已重置');
 }
@@ -2174,19 +2871,315 @@ function handleDeviceClick(device) {
   }
 }
 
+// ==================== 数据记录功能 ====================
+
+// 切换数据记录状态
+function toggleDataRecording(deviceId) {
+  const device = rtkDevices.value[deviceId];
+  if (!device) {
+    ElMessage.error('设备不存在');
+    return;
+  }
+  
+  if (!device.connected || !device.data) {
+    ElMessage.warning('设备未连接或无数据，无法开始记录');
+    return;
+  }
+  
+  if (device.dataRecording) {
+    stopDataRecording(deviceId);
+  } else {
+    showSaveConfigDialog(deviceId);
+  }
+}
+
+// 显示保存配置对话框
+function showSaveConfigDialog(deviceId) {
+  const device = rtkDevices.value[deviceId];
+  if (!device) return;
+  
+  // 生成默认文件名
+  baseSaveFileName.value = `RTK_${device.name || deviceId}_${new Date().toISOString().slice(0, 10)}`;
+  currentRecordingDeviceId.value = deviceId;
+  saveConfigDialogVisible.value = true;
+}
+
+// 确认配置并开始记录
+function confirmSaveConfig() {
+  if (!baseSaveFileName.value.trim()) {
+    ElMessage.warning('请输入文件名');
+    return;
+  }
+  
+  const deviceId = currentRecordingDeviceId.value;
+  saveConfigDialogVisible.value = false;
+  
+  // 初始化批次号
+  currentBatchNumber.value[deviceId] = 1;
+  
+  // 开始实际的数据记录
+  startDataRecording(deviceId);
+}
+
+// 取消配置
+function cancelSaveConfig() {
+  saveConfigDialogVisible.value = false;
+  currentRecordingDeviceId.value = '';
+  baseSaveFileName.value = '';
+}
+
+// 开始数据记录
+function startDataRecording(deviceId) {
+  const device = rtkDevices.value[deviceId];
+  if (!device) return;
+  
+  try {
+    // 初始化数据存储
+    recordedData.value[deviceId] = [];
+    recordingStartTimes.value[deviceId] = Date.now();
+    
+    // 标记设备为记录状态
+    dataRecordingDevices.value.add(deviceId);
+    device.dataRecording = true;
+    
+    // 启动100ms间隔的定时器
+    const interval = setInterval(() => {
+      recordDeviceData(deviceId);
+    }, 100);
+    
+    dataRecordIntervals.value[deviceId] = interval;
+    
+    ElMessage.success(`设备 ${device.name || deviceId} 开始记录数据`);
+    console.log(`开始记录设备 ${deviceId} 的数据，基础文件名: ${baseSaveFileName.value}`);
+    
+  } catch (error) {
+    console.error('开始数据记录失败:', error);
+    ElMessage.error('开始数据记录失败');
+  }
+}
+
+// 停止数据记录（自动导出剩余数据）
+function stopDataRecording(deviceId) {
+  const device = rtkDevices.value[deviceId];
+  if (!device) return;
+  
+  try {
+    // 清除定时器
+    if (dataRecordIntervals.value[deviceId]) {
+      clearInterval(dataRecordIntervals.value[deviceId]);
+      delete dataRecordIntervals.value[deviceId];
+    }
+    
+    // 更新设备状态
+    dataRecordingDevices.value.delete(deviceId);
+    device.dataRecording = false;
+    
+    const remainingData = recordedData.value[deviceId] || [];
+    const batchNumber = currentBatchNumber.value[deviceId] || 1;
+    const totalRecorded = (batchNumber - 1) * 1000 + remainingData.length;
+    
+    console.log(`停止记录设备 ${deviceId} 的数据，共记录 ${totalRecorded} 条`);
+    
+    // 自动导出剩余数据
+    if (remainingData.length > 0) {
+      const filename = `${baseSaveFileName.value}_batch_final`;
+      exportDataToCSV(remainingData, filename);
+      ElMessage.success(`记录完成！共记录 ${totalRecorded} 条数据，剩余 ${remainingData.length} 条已导出`);
+    } else {
+      ElMessage.success(`记录完成！共记录 ${totalRecorded} 条数据`);
+    }
+    
+    // 清理数据
+    delete recordedData.value[deviceId];
+    delete recordingStartTimes.value[deviceId];
+    delete currentBatchNumber.value[deviceId];
+    
+  } catch (error) {
+    console.error('停止数据记录失败:', error);
+    ElMessage.error('停止数据记录失败');
+  }
+}
+
+// 记录设备数据
+function recordDeviceData(deviceId) {
+  const device = rtkDevices.value[deviceId];
+  if (!device || !device.connected || !device.data) {
+    console.warn(`设备 ${deviceId} 连接状态或数据异常，跳过本次记录`);
+    return;
+  }
+  
+  try {
+    // 获取当前时间戳
+    const timestamp = new Date().toISOString();
+    
+    // 获取坐标数据（优先使用世界坐标）
+    let eCoord, nCoord, uCoord;
+    
+    if (device.worldCoords) {
+      // 使用转换后的世界坐标
+      eCoord = device.worldCoords.x;
+      nCoord = device.worldCoords.z; // worldCoords.z 对应 N坐标
+      uCoord = device.worldCoords.y; // worldCoords.y 对应 U坐标
+    } else {
+      // 回退到原始ENU坐标
+      eCoord = device.data.e || 0;
+      nCoord = device.data.n || 0;
+      uCoord = device.data.u || 0;
+    }
+    
+    // 构建记录数据
+    const dataRecord = {
+      timestamp: timestamp,
+      deviceId: device.id,
+      deviceName: device.name || device.id,
+      ipAddress: device.ip || '',
+      deviceNumber: device.deviceNumber || '',
+      deviceType: device.isBaseStation ? '基站' : '移动站',
+      e: eCoord,
+      n: nCoord,
+      u: uCoord
+    };
+    
+    // 添加到记录数据中
+    if (!recordedData.value[deviceId]) {
+      recordedData.value[deviceId] = [];
+    }
+    
+    recordedData.value[deviceId].push(dataRecord);
+    
+    // 检查是否需要自动导出
+    checkAutoExport(deviceId);
+    
+  } catch (error) {
+    console.error(`记录设备 ${deviceId} 数据失败:`, error);
+  }
+}
+
+// 检查是否需要自动导出
+function checkAutoExport(deviceId) {
+  const data = recordedData.value[deviceId];
+  if (!data || data.length < 1000) return;
+  
+  // 提取前1000条数据
+  const exportData = data.splice(0, 1000);
+  const batchNumber = currentBatchNumber.value[deviceId] || 1;
+  
+  // 生成批次文件名
+  const filename = `${baseSaveFileName.value}_batch_${String(batchNumber).padStart(3, '0')}`;
+  
+  // 自动导出
+  exportDataToCSV(exportData, filename);
+  
+  // 更新批次号
+  currentBatchNumber.value[deviceId]++;
+  
+  // 轻量提示，不干扰用户
+  console.log(`设备 ${deviceId} 自动导出第 ${batchNumber} 批数据，${exportData.length} 条记录`);
+  
+  // 可选：显示简短通知
+  ElMessage({
+    message: `已自动导出第 ${batchNumber} 批数据 (1000条)`,
+    type: 'success',
+    duration: 2000,
+    showClose: false
+  });
+}
+
+
+
+// 导出CSV文件
+function exportDataToCSV(data, filename) {
+  return new Promise((resolve, reject) => {
+    try {
+      // CSV表头
+      const headers = [
+        '世界时间',
+        '设备ID', 
+        '设备名称',
+        'IP地址',
+        '设备编号',
+        '设备类型',
+        'E坐标',
+        'N坐标', 
+        'U坐标'
+      ];
+      
+      // 构建CSV内容
+      let csvContent = headers.join(',') + '\n';
+      
+      data.forEach(record => {
+        const row = [
+          record.timestamp,
+          record.deviceId,
+          `"${record.deviceName}"`, // 用引号包围，防止名称中有逗号
+          record.ipAddress,
+          record.deviceNumber,
+          record.deviceType,
+          record.e.toFixed(6),
+          record.n.toFixed(6),
+          record.u.toFixed(6)
+        ];
+        csvContent += row.join(',') + '\n';
+      });
+      
+      // 创建下载链接
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      link.href = url;
+      link.download = filename.endsWith('.csv') ? filename : filename + '.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      resolve();
+      
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+
+
 // 生命周期钩子
 onMounted(async () => {
   // 初始化3D场景
   await nextTick();
   init3DScene();
   
-  // 加载建筑模型
+  // 尝试恢复配准状态（在加载模型前）
+  const stateRestored = restoreAlignmentState();
+  
+  // 加载建筑模型（模型加载时会自动应用保存的变换）
   await loadBuildingModels();
   
-  // 连接WebSocket
+  // 静默恢复配准状态（无提示消息）
+  if (stateRestored) {
+    console.log('配准状态已静默恢复');
+    // 不调用applyRestoredAlignment，避免显示恢复消息
+    // 更新模型变换状态
+    modelTransformApplied.value = true;
+  }
+  
+  // 获取RTK设备数据
   await fetchRtkDevices();
   
-  refreshInterval.value = setInterval(fetchRtkDevices, 2000);
+  // 如果恢复了配准状态，重新应用坐标转换（静默）
+  if (stateRestored && alignmentManager.value.rtkBasePoint) {
+    updateAllRtkWorldCoords();
+    console.log('RTK坐标系已静默恢复到配准状态');
+  }
+  
+  // 设置数据刷新间隔，并在每次刷新后检查基准点
+  refreshInterval.value = setInterval(() => {
+    fetchRtkDevices().then(() => {
+      // 检查基准点坐标更新
+      checkRtkBasePointUpdate();
+    });
+  }, 2000);
   
   // 模拟WebSocket连接状态
   setTimeout(() => {
@@ -2198,6 +3191,14 @@ onBeforeUnmount(() => {
   if (refreshInterval.value) {
     clearInterval(refreshInterval.value);
   }
+  
+  // 清理所有数据记录定时器和状态
+  Object.values(dataRecordIntervals.value).forEach(interval => {
+    clearInterval(interval);
+  });
+  dataRecordIntervals.value = {};
+  dataRecordingDevices.value.clear();
+  currentBatchNumber.value = {};
 });
 </script>
 
@@ -2247,7 +3248,6 @@ onBeforeUnmount(() => {
   font-size: 24px;
   font-weight: bold;
   color: #ffffff;
-  text-shadow: 0 0 10px #ffffff;
 }
 
 .main-content {
@@ -2262,6 +3262,29 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  max-height: calc(100vh - 140px); /* 减去顶部状态栏和一些边距 */
+  overflow-y: auto; /* 添加垂直滚动条 */
+  padding-right: 10px; /* 为滚动条留出空间 */
+}
+
+/* 自定义滚动条样式 */
+.control-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.control-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.control-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+.control-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .panel-section {
@@ -2277,7 +3300,6 @@ onBeforeUnmount(() => {
   margin: 0 0 20px 0;
   font-size: 18px;
   color: #ffffff;
-  text-shadow: 0 0 10px #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   padding-bottom: 10px;
 }
@@ -2411,6 +3433,19 @@ onBeforeUnmount(() => {
 .device-name {
   font-weight: bold;
   color: #ffffff;
+  display: flex;
+  align-items: center;
+}
+
+.device-color-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
 }
 
 .device-status {
@@ -2494,6 +3529,15 @@ onBeforeUnmount(() => {
   gap: 8px;
   margin-top: 10px;
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+.data-record-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  height: auto;
+  min-height: 24px;
+  margin-right: 4px;
 }
 
 .trajectory-btn {
@@ -2519,7 +3563,6 @@ onBeforeUnmount(() => {
 .panel-header h2 {
   margin: 0;
   color: #ffffff;
-  text-shadow: 0 0 10px #ffffff;
 }
 
 .three-container {
@@ -2610,85 +3653,83 @@ onBeforeUnmount(() => {
 .model-upload-section {
   margin-bottom: 1rem;
   text-align: center;
-  
-  .upload-tip {
-    margin-top: 0.5rem;
-    font-size: 12px;
-    color: #888;
-  }
+}
+
+.model-upload-section .upload-tip {
+  margin-top: 0.5rem;
+  font-size: 12px;
+  color: #888;
 }
 
 .model-controls {
   margin: 1rem 0;
-  
-  .control-item {
-    margin-bottom: 1rem;
-    
-    .control-label {
-      display: inline-block;
-      width: 80px;
-      color: #888;
-      font-size: 14px;
-      margin-right: 0.5rem;
-    }
-    
-    .el-slider {
-      width: calc(100% - 100px);
-      display: inline-block;
-      vertical-align: middle;
-    }
-  }
+}
+
+.model-controls .control-item {
+  margin-bottom: 1rem;
+}
+
+.model-controls .control-item .control-label {
+  display: inline-block;
+  width: 80px;
+  color: #888;
+  font-size: 14px;
+  margin-right: 0.5rem;
+}
+
+.model-controls .control-item .el-slider {
+  width: calc(100% - 100px);
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .loaded-models-list {
   margin-top: 1rem;
-  
-  h4 {
-    color: #e0e0e0;
-    margin-bottom: 0.5rem;
-    font-size: 14px;
-  }
-  
-  .model-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem;
-    margin-bottom: 0.5rem;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: all 0.3s;
-    
-    &:hover {
-      background: rgba(0, 0, 0, 0.5);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-    
-    .model-info {
-      .model-name {
-        color: #e0e0e0;
-        font-size: 14px;
-        margin-right: 0.5rem;
-      }
-      
-      .model-size {
-        color: #888;
-        font-size: 12px;
-        text-transform: uppercase;
-      }
-    }
-    
-    .model-actions {
-      display: flex;
-      gap: 0.5rem;
-      
-      .el-button {
-        padding: 4px;
-        font-size: 12px;
-      }
-    }
-  }
+}
+
+.loaded-models-list h4 {
+  color: #e0e0e0;
+  margin-bottom: 0.5rem;
+  font-size: 14px;
+}
+
+.loaded-models-list .model-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s;
+}
+
+.loaded-models-list .model-item:hover {
+  background: rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.loaded-models-list .model-item .model-info .model-name {
+  color: #e0e0e0;
+  font-size: 14px;
+  margin-right: 0.5rem;
+}
+
+.loaded-models-list .model-item .model-info .model-size {
+  color: #888;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.loaded-models-list .model-item .model-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.loaded-models-list .model-item .model-actions .el-button {
+  padding: 4px;
+  font-size: 12px;
 }
 
 /* 修改Element Plus组件在暗色主题下的样式 */
@@ -2696,16 +3737,35 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.3);
   border-color: rgba(255, 255, 255, 0.2);
   color: #e0e0e0;
-  
-  &:hover {
-    color: #00ff88;
-  }
+}
+
+:deep(.el-radio-button__inner:hover) {
+  color: #00ff88;
 }
 
 :deep(.el-radio-button__orig-radio:checked + .el-radio-button__inner) {
   background: rgba(0, 255, 136, 0.2);
   border-color: #00ff88;
   color: #00ff88;
+}
+
+/* 手动添加设备按钮样式 */
+.manual-add-btn {
+  background: linear-gradient(135deg, #00d4aa, #00ff88) !important;
+  border: none !important;
+  color: white !important;
+}
+
+.manual-add-btn:hover {
+  background: linear-gradient(135deg, #00a87a, #00cc6a) !important;
+  transform: translateY(-1px);
+}
+
+.scan-controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
 :deep(.el-slider__runway) {
@@ -3219,5 +4279,79 @@ onBeforeUnmount(() => {
   100% {
     box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
   }
+}
+
+/* 数据记录配置对话框样式 */
+:deep(.save-config-dialog) {
+  background: rgba(240, 240, 240, 0.98);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(200, 200, 200, 0.5);
+  border-radius: 15px;
+}
+
+:deep(.save-config-dialog .el-dialog__header) {
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.9), rgba(240, 240, 240, 0.9));
+  border-bottom: 1px solid rgba(200, 200, 200, 0.5);
+}
+
+:deep(.save-config-dialog .el-dialog__title) {
+  color: #333333;
+  font-weight: bold;
+}
+
+.save-config-content {
+  color: #333333;
+  line-height: 1.6;
+}
+
+.save-config-content p {
+  margin: 0 0 15px 0;
+  font-size: 15px;
+}
+
+.filename-preview {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(64, 158, 255, 0.1);
+  border: 1px solid rgba(64, 158, 255, 0.3);
+  border-radius: 4px;
+  font-size: 13px;
+  color: #666;
+  font-family: monospace;
+}
+
+.export-info {
+  background: rgba(255, 193, 7, 0.1);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.export-info p {
+  margin: 5px 0;
+  font-size: 13px;
+  color: #856404;
+}
+
+:deep(.save-config-dialog .el-form-item__label) {
+  color: #333333;
+  font-weight: 500;
+}
+
+:deep(.save-config-dialog .el-input__wrapper) {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+:deep(.save-config-dialog .el-input__inner) {
+  background: transparent;
+  border: none;
+  color: #333333;
+}
+
+:deep(.save-config-dialog .el-button--primary) {
+  background-color: #409eff;
+  border-color: #409eff;
 }
 </style>
