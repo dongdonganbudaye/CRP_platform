@@ -116,15 +116,15 @@
               <div v-if="device.connected && device.data" class="position-data">
                 <div class="coordinate">
                   <span class="coord-label">E:</span>
-                  <span class="coord-value">{{ device.data.e?.toFixed(3) }}m</span>
+                  <span class="coord-value">{{ getDisplayCoordinate(device, 'e')?.toFixed(3) }}m</span>
                 </div>
                 <div class="coordinate">
                   <span class="coord-label">N:</span>
-                  <span class="coord-value">{{ device.data.n?.toFixed(3) }}m</span>
+                  <span class="coord-value">{{ getDisplayCoordinate(device, 'n')?.toFixed(3) }}m</span>
                 </div>
                 <div class="coordinate">
                   <span class="coord-label">U:</span>
-                  <span class="coord-value">{{ device.data.u?.toFixed(3) }}m</span>
+                  <span class="coord-value">{{ getDisplayCoordinate(device, 'u')?.toFixed(3) }}m</span>
                 </div>
               </div>
               <!-- 可视化控制 -->
@@ -879,10 +879,10 @@ function init3DScene() {
   scene.value.add(gridHelper.value);
   
   // 添加自定义坐标轴 - E轴方向调整
-  // E轴 (红色) - 指向X负方向（旋转180度）
+  // E轴 (红色) - 指向X正方向
   const eAxisGeometry = markRaw(new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(-2, 0, 0)  // E轴指向X负方向
+    new THREE.Vector3(2, 0, 0)  // E轴指向X正方向
   ]));
   const eAxisMaterial = markRaw(new THREE.LineBasicMaterial({ color: 0xff0000 }));
   const eAxis = markRaw(new THREE.Line(eAxisGeometry, eAxisMaterial));
@@ -892,14 +892,14 @@ function init3DScene() {
   const eArrowGeometry = markRaw(new THREE.ConeGeometry(0.05, 0.2, 8));
   const eArrowMaterial = markRaw(new THREE.MeshBasicMaterial({ color: 0xff0000 }));
   const eArrow = markRaw(new THREE.Mesh(eArrowGeometry, eArrowMaterial));
-  eArrow.position.set(-2, 0, 0);
-  eArrow.rotateZ(Math.PI / 2); // 旋转箭头指向正确方向
+  eArrow.position.set(2, 0, 0);
+  eArrow.rotateZ(-Math.PI / 2); // 旋转箭头指向正确方向
   scene.value.add(eArrow);
   
-  // N轴 (绿色) - 指向Z正方向
+  // N轴 (绿色) - 指向Z负方向
   const nAxisGeometry = markRaw(new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0, 0, 2)
+    new THREE.Vector3(0, 0, -2)
   ]));
   const nAxisMaterial = markRaw(new THREE.LineBasicMaterial({ color: 0x00ff00 }));
   const nAxis = markRaw(new THREE.Line(nAxisGeometry, nAxisMaterial));
@@ -909,8 +909,8 @@ function init3DScene() {
   const nArrowGeometry = markRaw(new THREE.ConeGeometry(0.05, 0.2, 8));
   const nArrowMaterial = markRaw(new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
   const nArrow = markRaw(new THREE.Mesh(nArrowGeometry, nArrowMaterial));
-  nArrow.position.set(0, 0, 2);
-  nArrow.rotateX(Math.PI / 2); // 旋转箭头180度指向正确方向
+  nArrow.position.set(0, 0, -2);
+  nArrow.rotateX(-Math.PI / 2); // 旋转箭头指向正确方向
   scene.value.add(nArrow);
   
   // U轴 (蓝色) - 指向Y正方向
@@ -961,8 +961,8 @@ function init3DScene() {
   }
   
   // 添加E、N、U标签
-  const eLabel = createAxisLabel('E', new THREE.Vector3(-2.5, 0, 0), '#ff0000');
-  const nLabel = createAxisLabel('N', new THREE.Vector3(0, 0, 2.5), '#00ff00');
+  const eLabel = createAxisLabel('E', new THREE.Vector3(2.5, 0, 0), '#ff0000');
+  const nLabel = createAxisLabel('N', new THREE.Vector3(0, 0, -2.5), '#00ff00');
   const uLabel = createAxisLabel('U', new THREE.Vector3(0, 2.5, 0), '#0000ff');
   
   scene.value.add(eLabel);
@@ -1059,16 +1059,16 @@ function updateDevicesIn3D() {
     if (device.worldCoords) {
       // 使用已转换的世界坐标（相对于RTK基准点）
       position.set(
-        -device.worldCoords.x, // E轴取反以匹配坐标轴方向
-        device.worldCoords.y,
-        device.worldCoords.z
+        device.worldCoords.x, // E轴直接映射到X轴
+        device.worldCoords.y, // U轴直接映射到Y轴
+        -device.worldCoords.z // N轴取反映射到Z轴
       );
     } else {
       // 回退到原始ENU坐标（配准前）
       position.set(
-        -(device.data.e || 0), // E轴取反以匹配坐标轴方向
-        device.data.u || 0,
-        device.data.n || 0
+        device.data.e || 0, // E轴直接映射到X轴
+        device.data.u || 0, // U轴直接映射到Y轴
+        -(device.data.n || 0) // N轴取反映射到Z轴
       );
     }
     
@@ -1190,15 +1190,15 @@ function updateDeviceTrajectory(device) {
   const currentPosition = new THREE.Vector3();
   if (device.worldCoords) {
     currentPosition.set(
-      -device.worldCoords.x, // E轴取反以匹配坐标轴方向
-      device.worldCoords.y,
-      device.worldCoords.z
+      device.worldCoords.x, // E轴直接映射到X轴
+      device.worldCoords.y, // U轴直接映射到Y轴
+      -device.worldCoords.z // N轴取反映射到Z轴
     );
   } else {
     currentPosition.set(
-      -(device.data.e || 0), // E轴取反以匹配坐标轴方向
-      device.data.u || 0,
-      device.data.n || 0
+      device.data.e || 0, // E轴直接映射到X轴
+      device.data.u || 0, // U轴直接映射到Y轴
+      -(device.data.n || 0) // N轴取反映射到Z轴
     );
   }
   
@@ -1900,6 +1900,37 @@ function getDeviceColor(deviceId, isBaseStation = false) {
 // 释放设备颜色分配
 function releaseDeviceColor(deviceId) {
   delete deviceColorAssignments.value[deviceId];
+}
+
+// 获取设备显示坐标（优先使用配准后的世界坐标）
+function getDisplayCoordinate(device, axis) {
+  if (!device || !device.data) return 0;
+  
+  if (device.worldCoords) {
+    // 使用配准后的世界坐标
+    switch (axis) {
+      case 'e':
+        return device.worldCoords.x; // E轴直接映射
+      case 'n':
+        return -device.worldCoords.z; // N轴取反映射（因为N轴指向Z负方向）
+      case 'u':
+        return device.worldCoords.y; // U轴直接映射
+      default:
+        return 0;
+    }
+  } else {
+    // 回退到原始ENU坐标
+    switch (axis) {
+      case 'e':
+        return device.data.e || 0; // E轴直接映射
+      case 'n':
+        return -(device.data.n || 0); // N轴取反映射（因为N轴指向Z负方向）
+      case 'u':
+        return device.data.u || 0; // U轴直接映射
+      default:
+        return 0;
+    }
+  }
 }
 
 // 切换单个模型的显示/隐藏状态
@@ -3072,14 +3103,14 @@ function recordDeviceData(deviceId) {
     
     if (device.worldCoords) {
       // 使用转换后的世界坐标
-      eCoord = -device.worldCoords.x; // E轴取反以匹配坐标轴方向
-      nCoord = device.worldCoords.z; // worldCoords.z 对应 N坐标
-      uCoord = device.worldCoords.y; // worldCoords.y 对应 U坐标
+      eCoord = device.worldCoords.x; // E轴直接映射
+      nCoord = -device.worldCoords.z; // N轴取反映射（因为N轴指向Z负方向）
+      uCoord = device.worldCoords.y; // U轴直接映射
     } else {
       // 回退到原始ENU坐标
-      eCoord = -(device.data.e || 0); // E轴取反以匹配坐标轴方向
-      nCoord = device.data.n || 0;
-      uCoord = device.data.u || 0;
+      eCoord = device.data.e || 0; // E轴直接映射
+      nCoord = -(device.data.n || 0); // N轴取反映射（因为N轴指向Z负方向）
+      uCoord = device.data.u || 0; // U轴直接映射
     }
     
     // 构建记录数据
