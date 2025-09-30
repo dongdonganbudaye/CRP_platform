@@ -18,19 +18,98 @@
       </div>
       
       <div class="video-section">
-        <WebRtcStream 
-          @stream-status-change="updateStreamStatus" 
-          :debugMode="debugMode"
-          :streamUrl="webrtcUrl"
-          :audioEnabled="true"
-          ref="webrtcStream" 
-        />
+        <div class="dual-video-container">
+          <div class="video-panel">
+            <div class="video-title">
+              <v-icon color="primary" class="mr-1">mdi-robot</v-icon>
+              机械臂1 (192.168.0.115)
+            </div>
+            <WebRtcStream 
+              @stream-status-change="updateStreamStatus1" 
+              :debugMode="debugMode"
+              :streamUrl="webrtcUrl1"
+              :audioEnabled="true"
+              ref="webrtcStream1" 
+            />
+          </div>
+          <div class="video-panel">
+            <div class="video-title">
+              <v-icon color="primary" class="mr-1">mdi-robot</v-icon>
+              机械臂2 (192.168.0.116)
+            </div>
+            <WebRtcStream 
+              @stream-status-change="updateStreamStatus2" 
+              :debugMode="debugMode"
+              :streamUrl="webrtcUrl2"
+              :audioEnabled="true"
+              ref="webrtcStream2" 
+            />
+          </div>
+        </div>
       </div>
       
       <div class="info-section">
         <div class="info-card">
           <div class="card-title">
             <v-icon color="primary" class="mr-2">mdi-information-outline</v-icon>
+            机械臂1状态 (192.168.0.115)
+          </div>
+          <div class="info-content">
+            <div class="info-item">
+              <span class="info-label">摄像头状态:</span>
+              <span class="info-value" :class="{ 'online': isArm1CameraConnected, 'offline': !isArm1CameraConnected }">
+                {{ isArm1CameraConnected ? '已连接' : '未连接' }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">视频流状态:</span>
+              <span class="info-value" :class="{ 'online': isStream1Active, 'offline': !isStream1Active }">
+                {{ isStream1Active ? '活跃' : '非活跃' }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">流地址:</span>
+              <span class="info-value">{{ webrtcUrl1.substring(0, 40) }}...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">音频支持:</span>
+              <span class="info-value">{{ isStream1Active ? '已启用' : '无数据' }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="info-card">
+          <div class="card-title">
+            <v-icon color="primary" class="mr-2">mdi-information-outline</v-icon>
+            机械臂2状态 (192.168.0.116)
+          </div>
+          <div class="info-content">
+            <div class="info-item">
+              <span class="info-label">摄像头状态:</span>
+              <span class="info-value" :class="{ 'online': isArm2CameraConnected, 'offline': !isArm2CameraConnected }">
+                {{ isArm2CameraConnected ? '已连接' : '未连接' }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">视频流状态:</span>
+              <span class="info-value" :class="{ 'online': isStream2Active, 'offline': !isStream2Active }">
+                {{ isStream2Active ? '活跃' : '非活跃' }}
+              </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">流地址:</span>
+              <span class="info-value">{{ webrtcUrl2.substring(0, 40) }}...</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">音频支持:</span>
+              <span class="info-value">{{ isStream2Active ? '已启用' : '无数据' }}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="info-card">
+          <div class="card-title">
+            <v-icon color="primary" class="mr-2">mdi-server</v-icon>
             系统信息
           </div>
           <div class="info-content">
@@ -41,32 +120,16 @@
               </span>
             </div>
             <div class="info-item">
-              <span class="info-label">机械臂摄像头:</span>
-              <span class="info-value" :class="{ 'online': isArmCameraConnected, 'offline': !isArmCameraConnected }">
-                {{ isArmCameraConnected ? '已连接' : '未连接' }}
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">视频流状态:</span>
-              <span class="info-value" :class="{ 'online': isStreamActive, 'offline': !isStreamActive }">
-                {{ isStreamActive ? '活跃' : '非活跃' }}
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">流地址:</span>
-              <span class="info-value">{{ webrtcUrl.substring(0, 50) }}...</span>
-            </div>
-            <div class="info-item">
               <span class="info-label">协议类型:</span>
-              <span class="info-value">WebRTC (Web Real-Time Communication)</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">音频支持:</span>
-              <span class="info-value">{{ isStreamActive ? '已启用' : '无数据' }}</span>
+              <span class="info-value">WebRTC</span>
             </div>
             <div class="info-item">
               <span class="info-label">延迟优化:</span>
-              <span class="info-value">{{ isStreamActive ? '已启用' : '无数据' }}</span>
+              <span class="info-value">{{ (isStream1Active || isStream2Active) ? '已启用' : '无数据' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">总连接数:</span>
+              <span class="info-value">{{ (isStream1Active ? 1 : 0) + (isStream2Active ? 1 : 0) }}/2</span>
             </div>
           </div>
         </div>
@@ -85,19 +148,30 @@ export default {
   },
   data() {
     return {
-      isStreamActive: false,
+      // 机械臂1状态
+      isStream1Active: false,
+      isArm1CameraConnected: false,
+      webrtcUrl1: 'http://192.168.0.115/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
+      
+      // 机械臂2状态
+      isStream2Active: false,
+      isArm2CameraConnected: false,
+      webrtcUrl2: 'http://192.168.0.116/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
+      
+      // 系统状态
       isBackendConnected: false,
-      isArmCameraConnected: false,
       checkBackendTimer: null,
-              webrtcUrl: 'http://192.168.0.51/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
       debugMode: false
     }
   },
   methods: {
-    updateStreamStatus(status) {
-      this.isStreamActive = status;
-      // 当视频流状态改变时，同时更新摄像头连接状态
-      this.isArmCameraConnected = status;
+    updateStreamStatus1(status) {
+      this.isStream1Active = status;
+      this.isArm1CameraConnected = status;
+    },
+    updateStreamStatus2(status) {
+      this.isStream2Active = status;
+      this.isArm2CameraConnected = status;
     },
     checkBackendConnection() {
       // 检查后端API服务是否可用（使用机械臂专用API）
@@ -143,17 +217,23 @@ export default {
         })
         .then(data => {
           console.log('Arm camera status:', data);
-          if (data && typeof data.camera_connected !== 'undefined') {
-            this.isArmCameraConnected = data.camera_connected;
+          if (data && typeof data.camera1_connected !== 'undefined') {
+            this.isArm1CameraConnected = data.camera1_connected;
           } else {
-            // 如果API返回的数据不包含camera_connected字段，根据视频流状态判断
-            this.isArmCameraConnected = this.isStreamActive;
+            this.isArm1CameraConnected = this.isStream1Active;
+          }
+          
+          if (data && typeof data.camera2_connected !== 'undefined') {
+            this.isArm2CameraConnected = data.camera2_connected;
+          } else {
+            this.isArm2CameraConnected = this.isStream2Active;
           }
         })
         .catch(error => {
           console.error('Arm camera status check error:', error);
           // 如果API不可用，根据视频流状态判断
-          this.isArmCameraConnected = this.isStreamActive;
+          this.isArm1CameraConnected = this.isStream1Active;
+          this.isArm2CameraConnected = this.isStream2Active;
         });
     },
     toggleDebugMode() {
@@ -232,6 +312,37 @@ export default {
   overflow: hidden;
 }
 
+.dual-video-container {
+  display: flex;
+  gap: 15px;
+  height: 100%;
+}
+
+.video-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 18, 18, 0.3);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-title {
+  background: rgba(18, 18, 18, 0.8);
+  color: #fff;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-panel .webrtc-stream {
+  flex: 1;
+}
+
 .info-section {
   display: flex;
   gap: 20px;
@@ -258,7 +369,7 @@ export default {
 
 .info-content {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 15px;
 }
 
@@ -288,13 +399,29 @@ export default {
   color: #ff3b30;
 }
 
+@media (max-width: 1200px) {
+  .info-section {
+    flex-direction: column;
+  }
+}
+
 @media (max-width: 768px) {
+  .dual-video-container {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
   .video-section {
-    height: 50vh;
+    height: 80vh;
   }
   
   .info-content {
     grid-template-columns: 1fr;
   }
+  
+  .video-title {
+    font-size: 14px;
+    padding: 10px 12px;
+  }
 }
-</style> 
+</style>

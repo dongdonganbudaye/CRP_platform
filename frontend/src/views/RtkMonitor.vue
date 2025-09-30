@@ -1076,8 +1076,8 @@ function updateDevicesIn3D() {
     const deviceColor = getDeviceColor(device.id, device.isBaseStation);
     
     if (device.isBaseStation) {
-       // 基站：白色球体
-       geometry = markRaw(new THREE.SphereGeometry(0.3, 16, 16));
+       // 基站：白色球体（缩小一半）
+       geometry = markRaw(new THREE.SphereGeometry(0.15, 16, 16));
        material = markRaw(new THREE.MeshLambertMaterial({ 
          color: deviceColor.hex,
          emissive: 0x222222
@@ -1098,8 +1098,8 @@ function updateDevicesIn3D() {
        scene.value.add(rangeMesh);
        baseMeshes.value.push(rangeMesh);
      } else {
-       // 移动站：使用分配的颜色
-       geometry = markRaw(new THREE.SphereGeometry(0.2, 16, 16));
+       // 移动站：使用分配的颜色（缩小一半）
+       geometry = markRaw(new THREE.SphereGeometry(0.1, 16, 16));
        material = markRaw(new THREE.MeshLambertMaterial({ 
          color: deviceColor.hex,
          emissive: 0x111111  // 使用固定的暗灰色发光，避免颜色干扰

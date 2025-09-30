@@ -1,10 +1,10 @@
 {
-  "model_20250925_143614": {
-    "id": "model_20250925_143614",
-    "name": "1_foundation_2",
-    "filename": "model_20250925_143614.glb",
+  "model_20250927_090055": {
+    "id": "model_20250927_090055",
+    "name": "1_foundation_3",
+    "filename": "model_20250927_090055.glb",
     "format": ".glb",
-    "upload_time": "2025-09-25T14:36:14.552645",
+    "upload_time": "2025-09-27T09:00:55.414991",
     "position": {
       "x": 0,
       "y": 0,
@@ -29,12 +29,12 @@
       "altitude": 0
     }
   },
-  "model_20250925_143638": {
-    "id": "model_20250925_143638",
+  "model_20250927_090106": {
+    "id": "model_20250927_090106",
     "name": "2_curtain wall steel frame",
-    "filename": "model_20250925_143638.glb",
+    "filename": "model_20250927_090106.glb",
     "format": ".glb",
-    "upload_time": "2025-09-25T14:36:38.525348",
+    "upload_time": "2025-09-27T09:01:06.108207",
     "position": {
       "x": 0,
       "y": 0,
@@ -59,12 +59,12 @@
       "altitude": 0
     }
   },
-  "model_20250925_143653": {
-    "id": "model_20250925_143653",
+  "model_20250927_090118": {
+    "id": "model_20250927_090118",
     "name": "3_sprayed steel component",
-    "filename": "model_20250925_143653.glb",
+    "filename": "model_20250927_090118.glb",
     "format": ".glb",
-    "upload_time": "2025-09-25T14:36:53.137034",
+    "upload_time": "2025-09-27T09:01:18.118405",
     "position": {
       "x": 0,
       "y": 0,
@@ -89,12 +89,12 @@
       "altitude": 0
     }
   },
-  "model_20250925_143733": {
-    "id": "model_20250925_143733",
+  "model_20250927_090157": {
+    "id": "model_20250927_090157",
     "name": "4_glass curtain wall",
-    "filename": "model_20250925_143733.glb",
+    "filename": "model_20250927_090157.glb",
     "format": ".glb",
-    "upload_time": "2025-09-25T14:37:33.376324",
+    "upload_time": "2025-09-27T09:01:58.002741",
     "position": {
       "x": 0,
       "y": 0,
