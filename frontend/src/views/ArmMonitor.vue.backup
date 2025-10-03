@@ -18,11 +18,11 @@
       </div>
       
       <div class="video-section">
-        <div class="triple-video-container">
+        <div class="dual-video-container">
           <div class="video-panel">
             <div class="video-title">
               <v-icon color="primary" class="mr-1">mdi-robot</v-icon>
-              机械臂1 (192.168.0.10)
+              机械臂1 (192.168.0.115)
             </div>
             <WebRtcStream 
               @stream-status-change="updateStreamStatus1" 
@@ -35,7 +35,7 @@
           <div class="video-panel">
             <div class="video-title">
               <v-icon color="primary" class="mr-1">mdi-robot</v-icon>
-              机械臂2 (192.168.0.12)
+              机械臂2 (192.168.0.116)
             </div>
             <WebRtcStream 
               @stream-status-change="updateStreamStatus2" 
@@ -45,19 +45,6 @@
               ref="webrtcStream2" 
             />
           </div>
-          <div class="video-panel">
-            <div class="video-title">
-              <v-icon color="primary" class="mr-1">mdi-robot</v-icon>
-              机械臂3 (192.168.0.22)
-            </div>
-            <WebRtcStream 
-              @stream-status-change="updateStreamStatus3" 
-              :debugMode="debugMode"
-              :streamUrl="webrtcUrl3"
-              :audioEnabled="true"
-              ref="webrtcStream3" 
-            />
-          </div>
         </div>
       </div>
       
@@ -65,7 +52,7 @@
         <div class="info-card">
           <div class="card-title">
             <v-icon color="primary" class="mr-2">mdi-information-outline</v-icon>
-            机械臂1 (192.168.0.10)
+            机械臂1状态 (192.168.0.115)
           </div>
           <div class="info-content">
             <div class="info-item">
@@ -81,6 +68,10 @@
               </span>
             </div>
             <div class="info-item">
+              <span class="info-label">流地址:</span>
+              <span class="info-value">{{ webrtcUrl1.substring(0, 40) }}...</span>
+            </div>
+            <div class="info-item">
               <span class="info-label">音频支持:</span>
               <span class="info-value">{{ isStream1Active ? '已启用' : '无数据' }}</span>
             </div>
@@ -90,7 +81,7 @@
         <div class="info-card">
           <div class="card-title">
             <v-icon color="primary" class="mr-2">mdi-information-outline</v-icon>
-            机械臂2 (192.168.0.12)
+            机械臂2状态 (192.168.0.116)
           </div>
           <div class="info-content">
             <div class="info-item">
@@ -106,39 +97,16 @@
               </span>
             </div>
             <div class="info-item">
+              <span class="info-label">流地址:</span>
+              <span class="info-value">{{ webrtcUrl2.substring(0, 40) }}...</span>
+            </div>
+            <div class="info-item">
               <span class="info-label">音频支持:</span>
               <span class="info-value">{{ isStream2Active ? '已启用' : '无数据' }}</span>
             </div>
           </div>
         </div>
         
-        <div class="info-card">
-          <div class="card-title">
-            <v-icon color="primary" class="mr-2">mdi-information-outline</v-icon>
-            机械臂3 (192.168.0.22)
-          </div>
-          <div class="info-content">
-            <div class="info-item">
-              <span class="info-label">摄像头状态:</span>
-              <span class="info-value" :class="{ 'online': isArm3CameraConnected, 'offline': !isArm3CameraConnected }">
-                {{ isArm3CameraConnected ? '已连接' : '未连接' }}
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">视频流状态:</span>
-              <span class="info-value" :class="{ 'online': isStream3Active, 'offline': !isStream3Active }">
-                {{ isStream3Active ? '活跃' : '非活跃' }}
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">音频支持:</span>
-              <span class="info-value">{{ isStream3Active ? '已启用' : '无数据' }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="system-info">
         <div class="info-card">
           <div class="card-title">
             <v-icon color="primary" class="mr-2">mdi-server</v-icon>
@@ -157,11 +125,11 @@
             </div>
             <div class="info-item">
               <span class="info-label">延迟优化:</span>
-              <span class="info-value">{{ (isStream1Active || isStream2Active || isStream3Active) ? '已启用' : '无数据' }}</span>
+              <span class="info-value">{{ (isStream1Active || isStream2Active) ? '已启用' : '无数据' }}</span>
             </div>
             <div class="info-item">
               <span class="info-label">总连接数:</span>
-              <span class="info-value">{{ (isStream1Active ? 1 : 0) + (isStream2Active ? 1 : 0) + (isStream3Active ? 1 : 0) }}/3</span>
+              <span class="info-value">{{ (isStream1Active ? 1 : 0) + (isStream2Active ? 1 : 0) }}/2</span>
             </div>
           </div>
         </div>
@@ -180,20 +148,15 @@ export default {
   },
   data() {
     return {
-      // 机械臂1状态 (192.168.0.10)
+      // 机械臂1状态
       isStream1Active: false,
       isArm1CameraConnected: false,
-      webrtcUrl1: 'http://192.168.0.10/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
+      webrtcUrl1: 'http://192.168.0.115/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
       
-      // 机械臂2状态 (192.168.0.12)
+      // 机械臂2状态
       isStream2Active: false,
       isArm2CameraConnected: false,
-      webrtcUrl2: 'http://192.168.0.12/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
-      
-      // 机械臂3状态 (192.168.0.22)
-      isStream3Active: false,
-      isArm3CameraConnected: false,
-      webrtcUrl3: 'http://192.168.0.22/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
+      webrtcUrl2: 'http://192.168.0.116/player/webrtc?streamPath=hlsram/live0&isMute=1&auto=1&aspect=0&hasAudio=1&username=admin&auth=f6fdffe48c908deb0f4c3bd36c032e72',
       
       // 系统状态
       isBackendConnected: false,
@@ -209,10 +172,6 @@ export default {
     updateStreamStatus2(status) {
       this.isStream2Active = status;
       this.isArm2CameraConnected = status;
-    },
-    updateStreamStatus3(status) {
-      this.isStream3Active = status;
-      this.isArm3CameraConnected = status;
     },
     checkBackendConnection() {
       // 检查后端API服务是否可用（使用机械臂专用API）
@@ -269,19 +228,12 @@ export default {
           } else {
             this.isArm2CameraConnected = this.isStream2Active;
           }
-          
-          if (data && typeof data.camera3_connected !== 'undefined') {
-            this.isArm3CameraConnected = data.camera3_connected;
-          } else {
-            this.isArm3CameraConnected = this.isStream3Active;
-          }
         })
         .catch(error => {
           console.error('Arm camera status check error:', error);
           // 如果API不可用，根据视频流状态判断
           this.isArm1CameraConnected = this.isStream1Active;
           this.isArm2CameraConnected = this.isStream2Active;
-          this.isArm3CameraConnected = this.isStream3Active;
         });
     },
     toggleDebugMode() {
@@ -325,7 +277,7 @@ export default {
 }
 
 .page-content {
-  max-width: 1600px;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
 }
@@ -354,15 +306,15 @@ export default {
 
 .video-section {
   width: 100%;
-  height: 65vh;
+  height: 70vh;
   margin-bottom: 20px;
   border-radius: 10px;
   overflow: hidden;
 }
 
-.triple-video-container {
+.dual-video-container {
   display: flex;
-  gap: 12px;
+  gap: 15px;
   height: 100%;
 }
 
@@ -379,8 +331,8 @@ export default {
 .video-title {
   background: rgba(18, 18, 18, 0.8);
   color: #fff;
-  padding: 10px 14px;
-  font-size: 15px;
+  padding: 12px 16px;
+  font-size: 16px;
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -393,42 +345,32 @@ export default {
 
 .info-section {
   display: flex;
-  gap: 15px;
-  margin-bottom: 15px;
-}
-
-.system-info {
-  display: flex;
-  gap: 15px;
+  gap: 20px;
 }
 
 .info-card {
   flex: 1;
   background: rgba(18, 18, 18, 0.7);
   border-radius: 10px;
-  padding: 18px;
+  padding: 20px;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-.system-info .info-card {
-  max-width: 100%;
-}
-
 .card-title {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 500;
   color: #fff;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
   display: flex;
   align-items: center;
 }
 
 .info-content {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 15px;
 }
 
 .info-item {
@@ -439,12 +381,12 @@ export default {
 
 .info-label {
   color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .info-value {
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   word-break: break-all;
 }
@@ -457,42 +399,20 @@ export default {
   color: #ff3b30;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1200px) {
   .info-section {
-    flex-wrap: wrap;
-  }
-  
-  .info-card {
-    min-width: calc(50% - 10px);
+    flex-direction: column;
   }
 }
 
-@media (max-width: 1024px) {
-  .triple-video-container {
+@media (max-width: 768px) {
+  .dual-video-container {
     flex-direction: column;
     gap: 10px;
   }
   
   .video-section {
-    height: auto;
-  }
-  
-  .video-panel {
-    height: 40vh;
-  }
-  
-  .info-section {
-    flex-direction: column;
-  }
-  
-  .info-card {
-    min-width: 100%;
-  }
-}
-
-@media (max-width: 768px) {
-  .video-panel {
-    height: 35vh;
+    height: 80vh;
   }
   
   .info-content {
@@ -500,12 +420,8 @@ export default {
   }
   
   .video-title {
-    font-size: 13px;
-    padding: 8px 10px;
-  }
-  
-  .page-content {
-    max-width: 100%;
+    font-size: 14px;
+    padding: 10px 12px;
   }
 }
 </style>
