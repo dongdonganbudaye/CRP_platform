@@ -29,7 +29,8 @@
               :debugMode="debugMode"
               :streamUrl="webrtcUrl1"
               :audioEnabled="true"
-              ref="webrtcStream1" 
+              ref="webrtcStream1"
+              class="rotated-stream"
             />
           </div>
           <div class="video-panel">
@@ -42,7 +43,8 @@
               :debugMode="debugMode"
               :streamUrl="webrtcUrl2"
               :audioEnabled="true"
-              ref="webrtcStream2" 
+              ref="webrtcStream2"
+              class="rotated-stream"
             />
           </div>
           <div class="video-panel">
@@ -55,7 +57,8 @@
               :debugMode="debugMode"
               :streamUrl="webrtcUrl3"
               :audioEnabled="true"
-              ref="webrtcStream3" 
+              ref="webrtcStream3"
+              class="rotated-stream"
             />
           </div>
         </div>
@@ -354,7 +357,7 @@ export default {
 
 .video-section {
   width: 100%;
-  height: 65vh;
+  height: 75vh; /* 增加高度从65vh到75vh */
   margin-bottom: 20px;
   border-radius: 10px;
   overflow: hidden;
@@ -374,6 +377,10 @@ export default {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  /* 为旋转后的视频提供合适的容器 */
+  min-height: 0;
+  /* 调整宽高比以适应旋转后的内容 */
+  aspect-ratio: 3/4; /* 适应旋转90度后的画面比例 */
 }
 
 .video-title {
@@ -389,6 +396,30 @@ export default {
 
 .video-panel .webrtc-stream {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* 确保视频容器占满可用空间 */
+  width: 100%;
+  height: 100%;
+}
+
+.rotated-stream {
+  transform: rotate(90deg);
+  transform-origin: center center;
+  /* 让旋转后的画面填满整个容器 */
+  width: 140%; /* 增加宽度补偿旋转后的尺寸变化 */
+  height: 140%; /* 增加高度补偿旋转后的尺寸变化 */
+  max-width: none;
+  max-height: none;
+}
+
+/* 为旋转后的iframe添加特殊样式 */
+.rotated-stream .webrtc-iframe {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 改为cover让画面填满容器 */
 }
 
 .info-section {
@@ -478,7 +509,8 @@ export default {
   }
   
   .video-panel {
-    height: 40vh;
+    height: 50vh; /* 增加移动端高度从40vh到50vh */
+    aspect-ratio: auto; /* 移动端移除宽高比限制 */
   }
   
   .info-section {
@@ -492,7 +524,7 @@ export default {
 
 @media (max-width: 768px) {
   .video-panel {
-    height: 35vh;
+    height: 45vh; /* 增加小屏幕高度从35vh到45vh */
   }
   
   .info-content {

@@ -1113,30 +1113,43 @@ function updateDevicesIn3D() {
     
     // 添加设备标签
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 64;
     const ctx = canvas.getContext('2d');
+    
+    // 设置字体并测量文本尺寸
+    ctx.font = 'bold 6px Arial'; // 缩小字体到6px (一半)
+    const text = device.name || device.id;
+    const textMetrics = ctx.measureText(text);
+    const textWidth = textMetrics.width;
+    const textHeight = 6; // 字体大小
+    
+    // 设置canvas尺寸，留出边距
+    const padding = 4;
+    canvas.width = textWidth + padding * 2;
+    canvas.height = textHeight + padding * 2;
+    
+    // 重新设置字体（canvas尺寸改变后需要重新设置）
+    ctx.font = 'bold 6px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     
     // 绘制背景
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-         // 绘制边框 - 使用设备分配的颜色
-     ctx.strokeStyle = deviceColor.css;
-     ctx.lineWidth = 2;
-     ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+    // 绘制边框 - 使用设备分配的颜色
+    ctx.strokeStyle = deviceColor.css;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
     
     // 绘制文字
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 18px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(device.name || device.id, canvas.width / 2, canvas.height / 2);
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
     
     const texture = markRaw(new THREE.CanvasTexture(canvas));
     const spriteMaterial = markRaw(new THREE.SpriteMaterial({ map: texture }));
     const sprite = markRaw(new THREE.Sprite(spriteMaterial));
-    sprite.scale.set(2, 0.5, 1);
+    // 调整缩放比例，让标签更紧凑
+    sprite.scale.set(0.8, 0.3, 1);
     sprite.position.set(0, 0.8, 0);
     mesh.add(sprite);
     
