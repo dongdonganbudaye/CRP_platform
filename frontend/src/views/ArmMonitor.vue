@@ -201,21 +201,31 @@ export default {
       // 系统状态
       isBackendConnected: false,
       checkBackendTimer: null,
+      checkCameraTimer: null,
       debugMode: false
     }
   },
   methods: {
     updateStreamStatus1(status) {
       this.isStream1Active = status;
-      this.isArm1CameraConnected = status;
+      // 摄像头状态应该独立检测，不直接等于视频流状态
+      if (!status) {
+        this.isArm1CameraConnected = false;
+      }
     },
     updateStreamStatus2(status) {
       this.isStream2Active = status;
-      this.isArm2CameraConnected = status;
+      // 摄像头状态应该独立检测，不直接等于视频流状态
+      if (!status) {
+        this.isArm2CameraConnected = false;
+      }
     },
     updateStreamStatus3(status) {
       this.isStream3Active = status;
-      this.isArm3CameraConnected = status;
+      // 摄像头状态应该独立检测，不直接等于视频流状态
+      if (!status) {
+        this.isArm3CameraConnected = false;
+      }
     },
     checkBackendConnection() {
       // 检查后端API服务是否可用（使用机械臂专用API）
@@ -250,42 +260,52 @@ export default {
         });
     },
     checkArmCameraStatus() {
-      // 检查机械臂摄像头状态
-      fetch('/api/arm/status')
-        .then(response => {
-          if (response.ok) {
-            return response.json();
-          } else {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-        })
-        .then(data => {
-          console.log('Arm camera status:', data);
-          if (data && typeof data.camera1_connected !== 'undefined') {
-            this.isArm1CameraConnected = data.camera1_connected;
-          } else {
-            this.isArm1CameraConnected = this.isStream1Active;
-          }
+      // 检查机械臂摄像头状态 - 通过ping或HTTP请求测试设备连通性
+      const armIPs = ['192.168.0.10', '192.168.0.12', '192.168.0.22'];
+      const cameraStatusPromises = armIPs.map((ip, index) => {
+        return new Promise((resolve) => {
+          // 尝试访问摄像头的基础页面来检测连通性
+          const testUrl = `http://${ip}/`;
+          const timeout = 3000; // 3秒超时
           
-          if (data && typeof data.camera2_connected !== 'undefined') {
-            this.isArm2CameraConnected = data.camera2_connected;
-          } else {
-            this.isArm2CameraConnected = this.isStream2Active;
-          }
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
           
-          if (data && typeof data.camera3_connected !== 'undefined') {
-            this.isArm3CameraConnected = data.camera3_connected;
-          } else {
-            this.isArm3CameraConnected = this.isStream3Active;
-          }
-        })
-        .catch(error => {
-          console.error('Arm camera status check error:', error);
-          // 如果API不可用，根据视频流状态判断
-          this.isArm1CameraConnected = this.isStream1Active;
-          this.isArm2CameraConnected = this.isStream2Active;
-          this.isArm3CameraConnected = this.isStream3Active;
+          fetch(testUrl, { 
+            method: 'HEAD',
+            mode: 'no-cors', // 允许跨域请求
+            signal: controller.signal 
+          })
+          .then(() => {
+            clearTimeout(timeoutId);
+            resolve({ index, connected: true });
+          })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            resolve({ index, connected: false });
+          });
         });
+      });
+      
+      Promise.all(cameraStatusPromises).then(results => {
+        results.forEach(result => {
+          switch(result.index) {
+            case 0:
+              this.isArm1CameraConnected = result.connected;
+              break;
+            case 1:
+              this.isArm2CameraConnected = result.connected;
+              break;
+            case 2:
+              this.isArm3CameraConnected = result.connected;
+              break;
+          }
+        });
+        
+        if (this.debugMode) {
+          console.log('Camera status check results:', results);
+        }
+      });
     },
     toggleDebugMode() {
       this.debugMode = !this.debugMode;
@@ -301,11 +321,15 @@ export default {
     this.checkBackendConnection();
     this.checkArmCameraStatus();
     
-    // 定期检查后端连接
+    // 定期检查后端连接 (每30秒)
     this.checkBackendTimer = setInterval(() => {
       this.checkBackendConnection();
+    }, 30000);
+    
+    // 定期检查摄像头状态 (每10秒)
+    this.checkCameraTimer = setInterval(() => {
       this.checkArmCameraStatus();
-    }, 5000); // 每5秒检查一次
+    }, 10000);
   },
   beforeUnmount() {
     console.log('ArmMonitor component unmounting, cleaning up');
@@ -313,6 +337,10 @@ export default {
     if (this.checkBackendTimer) {
       clearInterval(this.checkBackendTimer);
       this.checkBackendTimer = null;
+    }
+    if (this.checkCameraTimer) {
+      clearInterval(this.checkCameraTimer);
+      this.checkCameraTimer = null;
     }
   }
 }

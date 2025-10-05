@@ -102,20 +102,35 @@ export default {
         });
       }
       
-      // iframe会自动加载，我们通过load事件来判断连接状态
+      // iframe会自动加载，但我们需要更准确地检测流状态
+      // 设置一个更短的初始检查时间
       setTimeout(() => {
         if (this.isConnecting) {
-          // 如果5秒后还在连接中，认为连接成功
-          this.isStreamActive = true;
-          this.isConnecting = false;
-          this.currentStatus = '播放中';
-          this.reconnectAttempts = 0;
-          
-          if (this.debugMode) {
-            console.log('WebRTC流连接成功');
+          // 检查iframe是否真的有内容
+          const iframe = this.$refs.webrtcFrame;
+          if (iframe) {
+            try {
+              // 尝试检查iframe的内容状态
+              // 注意：由于跨域限制，我们无法直接访问iframe内容
+              // 所以我们采用保守的方法，假设连接失败直到有明确的成功信号
+              this.isStreamActive = false;
+              this.isConnecting = false;
+              this.currentStatus = '连接超时';
+              this.lastError = '视频流连接超时，请检查设备状态';
+              
+              if (this.debugMode) {
+                console.log('WebRTC流连接超时');
+              }
+              
+              // 尝试重连
+              this.handleConnectionFailure();
+            } catch (error) {
+              console.error('检查iframe状态时出错:', error);
+              this.handleConnectionFailure();
+            }
           }
         }
-      }, 5000);
+      }, 8000); // 延长到8秒，给更多时间加载
     },
     
     stopStream() {
@@ -137,8 +152,23 @@ export default {
       if (this.debugMode) {
         console.log('WebRTC iframe loaded');
       }
-      // iframe加载完成，但不意味着视频流已经开始
-      // 实际的流状态会通过setTimeout来判断
+      
+      // iframe加载完成，但需要进一步验证是否真的有视频流
+      // 由于跨域限制，我们采用保守策略
+      setTimeout(() => {
+        if (this.isConnecting) {
+          // 如果iframe能够加载，我们假设连接可能成功
+          // 但仍然需要用户或其他机制来确认实际的视频流状态
+          this.isStreamActive = false; // 保持保守态度
+          this.isConnecting = false;
+          this.currentStatus = '等待视频流';
+          this.lastError = '设备可能离线或视频流不可用';
+          
+          if (this.debugMode) {
+            console.log('WebRTC iframe加载完成，但视频流状态未知');
+          }
+        }
+      }, 2000);
     },
     
     onIframeError() {
