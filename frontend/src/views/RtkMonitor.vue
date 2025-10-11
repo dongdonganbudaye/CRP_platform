@@ -75,9 +75,24 @@
 
         <!-- 已注册设备 -->
         <div class="panel-section">
-          <h3 class="section-title">已注册设备</h3>
+          <div class="section-header">
+            <h3 class="section-title">已注册设备</h3>
+            <div class="section-actions">
+              <el-button 
+                v-if="Object.keys(rtkDevices).length > 0"
+                type="warning" 
+                size="small"
+                @click="cleanupAllDevices"
+                :loading="isCleaningAll"
+                class="cleanup-all-btn"
+              >
+                <i class="el-icon-refresh"></i>
+                {{ isCleaningAll ? '清理中...' : '一键清理' }}
+              </el-button>
+            </div>
+          </div>
           <div class="registered-devices">
-            <div v-for="device in Object.values(rtkDevices)" :key="device.id" 
+            <div v-for="device in sortedRtkDevices" :key="device.id" 
                  class="registered-device" 
                  :class="{ 
                    active: device.connected,
@@ -580,6 +595,14 @@
       <div class="visualization-panel">
         <div class="panel-header">
           <h2>3D可视化</h2>
+          <el-button 
+            type="primary" 
+            size="small" 
+            @click="showLightingDialog"
+            class="lighting-control-btn"
+          >
+            光源设置
+          </el-button>
         </div>
                  <div ref="container3d" class="three-container"></div>
       </div>
@@ -688,6 +711,126 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 光源设置对话框 -->
+    <el-dialog
+      v-model="lightingDialogVisible"
+      title="3D可视化光源设置"
+      width="700px"
+      class="lighting-dialog"
+      :close-on-click-modal="false"
+    >
+      <el-form label-width="120px">
+        <!-- 光源总开关 -->
+        <el-form-item label="光源总开关">
+          <div class="lighting-toggle-controls">
+            <el-button 
+              type="success" 
+              size="small" 
+              @click="enableAllLights"
+              :disabled="isAllLightsEnabled"
+            >
+              一键开启
+            </el-button>
+            <el-button 
+              type="danger" 
+              size="small" 
+              @click="disableAllLights"
+              :disabled="!isAllLightsEnabled"
+            >
+              关闭光源
+            </el-button>
+          </div>
+          <div class="setting-description">快速开启或关闭所有光源</div>
+        </el-form-item>
+        
+        <el-divider></el-divider>
+        
+        <el-form-item label="半球光强度">
+          <el-slider 
+            v-model="lightingSettings.hemisphereIntensity" 
+            :min="0" 
+            :max="3" 
+            :step="0.1"
+            show-input
+            @change="updateLighting"
+          />
+          <div class="setting-description">模拟天空散射光，提供整体照明</div>
+        </el-form-item>
+        
+        <el-form-item label="环境光强度">
+          <el-slider 
+            v-model="lightingSettings.ambientIntensity" 
+            :min="0" 
+            :max="2" 
+            :step="0.1"
+            show-input
+            @change="updateLighting"
+          />
+          <div class="setting-description">提供均匀的基础照明</div>
+        </el-form-item>
+        
+        <el-form-item label="方向光强度">
+          <el-slider 
+            v-model="lightingSettings.directionalIntensity" 
+            :min="0" 
+            :max="3" 
+            :step="0.1"
+            show-input
+            @change="updateLighting"
+          />
+          <div class="setting-description">模拟太阳光，产生阴影效果</div>
+        </el-form-item>
+        
+        <el-form-item label="方向光位置">
+          <div class="position-controls">
+            <div class="position-item">
+              <label>X轴:</label>
+              <el-input-number 
+                v-model="lightingSettings.directionalPositionX" 
+                :min="-200" 
+                :max="200" 
+                :step="5"
+                size="small"
+                @change="updateLighting"
+              />
+            </div>
+            <div class="position-item">
+              <label>Y轴:</label>
+              <el-input-number 
+                v-model="lightingSettings.directionalPositionY" 
+                :min="0" 
+                :max="200" 
+                :step="5"
+                size="small"
+                @change="updateLighting"
+              />
+            </div>
+            <div class="position-item">
+              <label>Z轴:</label>
+              <el-input-number 
+                v-model="lightingSettings.directionalPositionZ" 
+                :min="-200" 
+                :max="200" 
+                :step="5"
+                size="small"
+                @change="updateLighting"
+              />
+            </div>
+          </div>
+          <div class="setting-description">调整方向光的位置以改变阴影效果</div>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="resetLighting">重置默认</el-button>
+          <el-button type="primary" @click="lightingDialogVisible = false">
+            确定
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -706,6 +849,7 @@ import { calculateKabschAlignment, assessAlignmentQuality } from '@/utils/kabsch
 const rtkDevices = ref({});
 const scanResults = ref([]);
 const isScanning = ref(false);
+const isCleaningAll = ref(false);
 
 const wsConnected = ref(false);
 const is3dViewReady = ref(false);
@@ -762,6 +906,29 @@ const configForm = ref({
   showIn3D: true
 });
 
+// 光源设置对话框状态
+const lightingDialogVisible = ref(false);
+const lightingSettings = ref({
+  hemisphereIntensity: 1.2,
+  ambientIntensity: 0.6,
+  directionalIntensity: 1.2,
+  directionalPositionX: 50,
+  directionalPositionY: 80,
+  directionalPositionZ: 50
+});
+
+// 光源对象引用
+const hemiLight = ref(null);
+const ambientLight = ref(null);
+const directionalLight = ref(null);
+
+// 计算是否所有光源都已开启
+const isAllLightsEnabled = computed(() => {
+  return lightingSettings.value.hemisphereIntensity > 0 ||
+         lightingSettings.value.ambientIntensity > 0 ||
+         lightingSettings.value.directionalIntensity > 0;
+});
+
 const configRules = {
   deviceId: [
     { required: true, message: '请输入设备ID', trigger: 'blur' }
@@ -805,6 +972,27 @@ const highlightedVertex = ref(null);
 const selectedRtkBaseDevice = ref(null);
 const availableRtkDevices = computed(() => {
   return Object.values(rtkDevices.value).filter(device => !device.isBaseStation);
+});
+
+// 按设备编号排序的已注册设备
+const sortedRtkDevices = computed(() => {
+  return Object.values(rtkDevices.value).sort((a, b) => {
+    // 如果设备编号存在，按编号排序
+    if (a.deviceNumber && b.deviceNumber) {
+      // 尝试按数字排序，如果不是数字则按字符串排序
+      const aNum = parseInt(a.deviceNumber);
+      const bNum = parseInt(b.deviceNumber);
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return aNum - bNum;
+      }
+      return a.deviceNumber.localeCompare(b.deviceNumber);
+    }
+    // 如果只有一个有编号，有编号的排在前面
+    if (a.deviceNumber && !b.deviceNumber) return -1;
+    if (!a.deviceNumber && b.deviceNumber) return 1;
+    // 如果都没有编号，按设备ID排序
+    return a.id.localeCompare(b.id);
+  });
 });
 
 // 阶段2：特征点对管理
@@ -970,18 +1158,22 @@ function init3DScene() {
   scene.value.add(uLabel);
   
   // 添加光源（全局日光 + 环境光）
-  const hemiLight = markRaw(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2)); // sky, ground, intensity
-  scene.value.add(hemiLight);
+  hemiLight.value = markRaw(new THREE.HemisphereLight(0xffffff, 0x444444, lightingSettings.value.hemisphereIntensity));
+  scene.value.add(hemiLight.value);
 
-  const ambientLight = markRaw(new THREE.AmbientLight(0xffffff, 0.6));
-  scene.value.add(ambientLight);
+  ambientLight.value = markRaw(new THREE.AmbientLight(0xffffff, lightingSettings.value.ambientIntensity));
+  scene.value.add(ambientLight.value);
 
-  const directionalLight = markRaw(new THREE.DirectionalLight(0xffffff, 1.2));
-  directionalLight.position.set(50, 80, 50); // simulate sun position
-  directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.width = 2048;
-  directionalLight.shadow.mapSize.height = 2048;
-  scene.value.add(directionalLight);
+  directionalLight.value = markRaw(new THREE.DirectionalLight(0xffffff, lightingSettings.value.directionalIntensity));
+  directionalLight.value.position.set(
+    lightingSettings.value.directionalPositionX, 
+    lightingSettings.value.directionalPositionY, 
+    lightingSettings.value.directionalPositionZ
+  );
+  directionalLight.value.castShadow = true;
+  directionalLight.value.shadow.mapSize.width = 2048;
+  directionalLight.value.shadow.mapSize.height = 2048;
+  scene.value.add(directionalLight.value);
   
   // 动画循环
   function animate() {
@@ -1115,41 +1307,68 @@ function updateDevicesIn3D() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
+    // 设置高DPI支持以提高清晰度
+    const devicePixelRatio = window.devicePixelRatio || 1;
+    const scaleFactor = Math.max(devicePixelRatio, 2); // 至少2倍分辨率
+    
     // 设置字体并测量文本尺寸
-    ctx.font = 'bold 6px Arial'; // 缩小字体到6px (一半)
+    const fontSize = 8; // 减小字体大小
+    ctx.font = `bold ${fontSize}px Arial`;
     const text = device.name || device.id;
     const textMetrics = ctx.measureText(text);
     const textWidth = textMetrics.width;
-    const textHeight = 6; // 字体大小
+    const textHeight = fontSize;
     
     // 设置canvas尺寸，留出边距
-    const padding = 4;
-    canvas.width = textWidth + padding * 2;
-    canvas.height = textHeight + padding * 2;
+    const padding = 3; // 减小边距
+    const canvasWidth = textWidth + padding * 2;
+    const canvasHeight = textHeight + padding * 2;
+    
+    // 设置高分辨率canvas
+    canvas.width = canvasWidth * scaleFactor;
+    canvas.height = canvasHeight * scaleFactor;
+    canvas.style.width = canvasWidth + 'px';
+    canvas.style.height = canvasHeight + 'px';
+    
+    // 缩放上下文以匹配设备像素比
+    ctx.scale(scaleFactor, scaleFactor);
+    
+    // 启用抗锯齿和文本优化
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.textRenderingOptimization = 'optimizeQuality';
     
     // 重新设置字体（canvas尺寸改变后需要重新设置）
-    ctx.font = 'bold 6px Arial';
+    ctx.font = `bold ${fontSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
     // 绘制背景
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     
     // 绘制边框 - 使用设备分配的颜色
     ctx.strokeStyle = deviceColor.css;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(0.75, 0.75, canvasWidth - 1.5, canvasHeight - 1.5);
     
     // 绘制文字
     ctx.fillStyle = 'white';
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    ctx.fillText(text, canvasWidth / 2, canvasHeight / 2);
     
     const texture = markRaw(new THREE.CanvasTexture(canvas));
-    const spriteMaterial = markRaw(new THREE.SpriteMaterial({ map: texture }));
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    
+    const spriteMaterial = markRaw(new THREE.SpriteMaterial({ 
+      map: texture,
+      transparent: true,
+      alphaTest: 0.1
+    }));
     const sprite = markRaw(new THREE.Sprite(spriteMaterial));
-    // 调整缩放比例，让标签更紧凑
-    sprite.scale.set(0.8, 0.3, 1);
+    // 调整缩放比例，保持标签大小合适
+    sprite.scale.set(canvasWidth * 0.01, canvasHeight * 0.01, 1);
     sprite.position.set(0, 0.8, 0);
     mesh.add(sprite);
     
@@ -1514,6 +1733,62 @@ async function cleanupDevice() {
       console.error('清理设备状态失败:', error);
       ElMessage.error('清理设备状态失败');
     }
+  }
+}
+
+// 一键清理所有设备状态
+async function cleanupAllDevices() {
+  try {
+    const deviceCount = Object.keys(rtkDevices.value).length;
+    
+    if (deviceCount === 0) {
+      ElMessage.info('当前没有已注册的设备需要清理');
+      return;
+    }
+    
+    await ElMessageBox.confirm(
+      `此操作将清理所有 ${deviceCount} 个已注册设备的状态，并将它们移回未注册列表，以便重新扫描和注册。确定要继续吗？`, 
+      '一键清理所有设备状态', {
+        confirmButtonText: '确定清理',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+    
+    isCleaningAll.value = true;
+    console.log('开始批量清理设备，URL:', `${apiBaseUrl}/api/rtk/devices/cleanup-all`);
+    
+    const response = await axios.post(`${apiBaseUrl}/api/rtk/devices/cleanup-all`);
+    console.log('批量清理响应:', response.data);
+    
+    if (response.data && response.data.success) {
+      ElMessage.success(response.data.message || '所有设备状态已清理，可重新扫描');
+      await fetchRtkDevices();
+      // 自动触发一次扫描
+      setTimeout(() => {
+        scanRtkDevices();
+      }, 1000);
+    } else {
+      console.error('批量清理失败，响应数据:', response.data);
+      ElMessage.error('批量清理失败: ' + (response.data?.message || '未知错误'));
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('批量清理设备状态失败，详细错误:', error);
+      if (error.response) {
+        console.error('错误响应状态:', error.response.status);
+        console.error('错误响应数据:', error.response.data);
+        ElMessage.error(`批量清理设备状态失败: ${error.response.data?.detail || error.response.statusText || '服务器错误'}`);
+      } else if (error.request) {
+        console.error('网络请求失败:', error.request);
+        ElMessage.error('批量清理设备状态失败: 网络请求失败，请检查后端服务是否运行');
+      } else {
+        console.error('其他错误:', error.message);
+        ElMessage.error('批量清理设备状态失败: ' + error.message);
+      }
+    }
+  } finally {
+    isCleaningAll.value = false;
   }
 }
 
@@ -3286,6 +3561,58 @@ onMounted(async () => {
   }, 1000);
 });
 
+// 光源设置相关函数
+function showLightingDialog() {
+  lightingDialogVisible.value = true;
+}
+
+function updateLighting() {
+  if (!hemiLight.value || !ambientLight.value || !directionalLight.value) return;
+  
+  // 更新半球光强度
+  hemiLight.value.intensity = lightingSettings.value.hemisphereIntensity;
+  
+  // 更新环境光强度
+  ambientLight.value.intensity = lightingSettings.value.ambientIntensity;
+  
+  // 更新方向光强度和位置
+  directionalLight.value.intensity = lightingSettings.value.directionalIntensity;
+  directionalLight.value.position.set(
+    lightingSettings.value.directionalPositionX,
+    lightingSettings.value.directionalPositionY,
+    lightingSettings.value.directionalPositionZ
+  );
+}
+
+function resetLighting() {
+  lightingSettings.value = {
+    hemisphereIntensity: 1.2,
+    ambientIntensity: 0.6,
+    directionalIntensity: 1.2,
+    directionalPositionX: 50,
+    directionalPositionY: 80,
+    directionalPositionZ: 50
+  };
+  updateLighting();
+  ElMessage.success('光源设置已重置为默认值');
+}
+
+function enableAllLights() {
+  lightingSettings.value.hemisphereIntensity = 1.2;
+  lightingSettings.value.ambientIntensity = 0.6;
+  lightingSettings.value.directionalIntensity = 1.2;
+  updateLighting();
+  ElMessage.success('所有光源已开启');
+}
+
+function disableAllLights() {
+  lightingSettings.value.hemisphereIntensity = 0;
+  lightingSettings.value.ambientIntensity = 0;
+  lightingSettings.value.directionalIntensity = 0;
+  updateLighting();
+  ElMessage.success('所有光源已关闭');
+}
+
 onBeforeUnmount(() => {
   if (refreshInterval.value) {
     clearInterval(refreshInterval.value);
@@ -3396,11 +3723,43 @@ onBeforeUnmount(() => {
 }
 
 .section-title {
-  margin: 0 0 20px 0;
+  margin: 0;
   font-size: 18px;
   color: #ffffff;
   border-bottom: 1px solid rgba(255, 255, 255, 0.3);
   padding-bottom: 10px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  flex: 1;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cleanup-all-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.cleanup-all-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 166, 35, 0.3);
 }
 
 .scan-btn {
@@ -3493,7 +3852,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
@@ -3662,6 +4021,50 @@ onBeforeUnmount(() => {
 .panel-header h2 {
   margin: 0;
   color: #ffffff;
+}
+
+.lighting-control-btn {
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* 光源设置对话框样式 */
+.lighting-dialog .el-dialog__body {
+  padding: 20px;
+}
+
+.lighting-toggle-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.position-controls {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.position-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.position-item label {
+  font-size: 14px;
+  color: #606266;
+  min-width: 30px;
+}
+
+.setting-description {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+  line-height: 1.4;
 }
 
 .three-container {

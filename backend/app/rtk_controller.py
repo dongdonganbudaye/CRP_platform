@@ -129,6 +129,53 @@ class RTKController:
             logger.error(f"清理设备失败: {e}")
             return {"success": False, "message": f"清理设备失败: {str(e)}"}
 
+    def cleanup_all_devices(self) -> Dict:
+        """清理所有设备状态，为重新注册做准备"""
+        try:
+            with self.status_lock:
+                device_count = len(self.devices)
+                if device_count == 0:
+                    return {"success": True, "message": "没有需要清理的设备"}
+                
+                # 获取所有设备ID的副本，避免在迭代过程中修改字典
+                device_ids = list(self.devices.keys())
+                cleaned_count = 0
+                
+                for device_id in device_ids:
+                    if device_id in self.devices:
+                        device_ip = self.devices[device_id]["ip"]
+                        
+                        # 将设备信息移回未注册列表，以便重新扫描
+                        if device_id in self.device_data:
+                            self.unregistered_ips[device_ip] = {
+                                "time": self.last_data_time.get(device_id, time.time()),
+                                "device_id": device_id,
+                                "sender_ip": device_ip,
+                                "data_packet_ip": device_ip,
+                                "data": self.device_data[device_id]
+                            }
+                        
+                        # 清理设备数据
+                        del self.devices[device_id]
+                        if device_id in self.device_data:
+                            del self.device_data[device_id]
+                        if device_id in self.device_status:
+                            del self.device_status[device_id]
+                        if device_id in self.last_data_time:
+                            del self.last_data_time[device_id]
+                        if device_id in self.device_records:
+                            del self.device_records[device_id]
+                        
+                        cleaned_count += 1
+                        logger.info(f"已清理设备 {device_id}，IP {device_ip} 已移回未注册列表")
+                
+                logger.info(f"批量清理完成，共清理 {cleaned_count} 个设备")
+                return {"success": True, "message": f"已清理 {cleaned_count} 个设备状态"}
+                
+        except Exception as e:
+            logger.error(f"批量清理设备失败: {e}")
+            return {"success": False, "message": f"批量清理设备失败: {str(e)}"}
+
     def unregister_device(self, device_id: str) -> Dict:
         """注销RTK设备"""
         if device_id not in self.devices:

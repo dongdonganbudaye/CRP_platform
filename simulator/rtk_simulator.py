@@ -123,9 +123,14 @@ class RTKDevice:
             logger.warning(f"RTK设备 {self.device_id} 已经在运行")
             return False
             
+        # 如果socket不存在或已关闭，重新创建连接
         if not self.socket:
-            logger.error(f"RTK设备 {self.device_id} 尚未连接到服务器")
-            return False
+            if not self.target_address or not self.target_port:
+                logger.error(f"RTK设备 {self.device_id} 缺少目标地址信息")
+                return False
+            if not self.connect(self.target_address, self.target_port):
+                logger.error(f"RTK设备 {self.device_id} 重新连接失败")
+                return False
             
         self.running = True
         self.thread = threading.Thread(target=self._run)
@@ -148,6 +153,15 @@ class RTKDevice:
         logger.info(f"RTK设备 {self.device_id} 已停止模拟运行")
         return True
     
+    def close(self):
+        """关闭设备连接（用于设备删除时）"""
+        if self.running:
+            self.stop()
+        if self.socket:
+            self.socket.close()
+            self.socket = None
+            logger.info(f"RTK设备 {self.device_id} 连接已关闭")
+    
     def _run(self):
         """设备运行线程"""
         try:
@@ -168,10 +182,7 @@ class RTKDevice:
                 
         except Exception as e:
             logger.error(f"RTK设备 {self.device_id} 运行出错: {e}")
-        finally:
-            if self.socket:
-                self.socket.close()
-                self.socket = None
+        # 注意：不在这里关闭socket，以便设备可以重新启动
     
     def _update_position(self, elapsed: float):
         """更新设备位置"""
@@ -1348,15 +1359,31 @@ class RtkSimulatorGUI:
     
     def _start_all_devices(self):
         """启动所有设备"""
+        success_count = 0
+        total_count = len(self.devices)
+        
         for device in self.devices.values():
-            device.start()
-        self.status_var.set(f"已启动所有设备 ({len(self.devices)}个)")
+            if device.start():
+                success_count += 1
+        
+        if success_count == total_count:
+            self.status_var.set(f"已启动所有设备 ({success_count}个)")
+        else:
+            self.status_var.set(f"启动设备: {success_count}/{total_count} 个成功")
     
     def _stop_all_devices(self):
         """停止所有设备"""
+        success_count = 0
+        total_count = len(self.devices)
+        
         for device in self.devices.values():
-            device.stop()
-        self.status_var.set(f"已停止所有设备 ({len(self.devices)}个)")
+            if device.stop():
+                success_count += 1
+        
+        if success_count == total_count:
+            self.status_var.set(f"已停止所有设备 ({success_count}个)")
+        else:
+            self.status_var.set(f"停止设备: {success_count}/{total_count} 个成功")
     
     def _start_selected_device(self):
         """启动选中设备"""
@@ -1391,8 +1418,8 @@ class RtkSimulatorGUI:
         
         device_id = self.devices_tree.item(selected[0])["values"][0]
         if device_id in self.devices:
-            # 先停止设备
-            self.devices[device_id].stop()
+            # 先关闭设备连接
+            self.devices[device_id].close()
             
             # 从字典中删除
             del self.devices[device_id]

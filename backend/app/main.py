@@ -501,6 +501,23 @@ async def scan_rtk_devices():
     """扫描网络上的RTK设备"""
     return rtk_controller.scan_for_devices()
 
+@app.post("/api/rtk/devices/cleanup-all")
+async def cleanup_all_rtk_devices():
+    """清理所有RTK设备状态，为重新注册做准备"""
+    try:
+        logger.info("收到批量清理所有RTK设备的请求")
+        result = rtk_controller.cleanup_all_devices()
+        logger.info(f"批量清理结果: {result}")
+        
+        if result.get("success"):
+            return {"success": True, "message": result.get("message", "所有设备清理成功")}
+        else:
+            return {"success": False, "message": result.get("message", "设备清理失败")}
+        
+    except Exception as e:
+        logger.error(f"批量清理RTK设备失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.put("/api/rtk/devices/{device_id}")
