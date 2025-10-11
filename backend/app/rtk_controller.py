@@ -335,15 +335,21 @@ class RTKController:
                             if all(map(np.isfinite, [e, n, u])):
                                 current_time = time.time()
                                 
-                                # 根据设备IP地址查找设备（优先使用发送方IP，然后尝试数据包中的IP）
+                                # 根据设备IP地址查找设备（优先使用数据包中的设备IP，支持模拟器多设备场景）
                                 matched_device_id = None
                                 logger.info(f"尝试匹配设备 - 发送方IP: {sender_ip}, 数据包IP: {device_ip}")
                                 
                                 for d_id, device in self.devices.items():
                                     logger.info(f"检查已注册设备 {d_id}: IP={device['ip']}")
-                                    if device["ip"] == sender_ip or device["ip"] == device_ip:
+                                    # 首先尝试通过设备ID匹配
+                                    if d_id == device_id:
                                         matched_device_id = d_id
-                                        logger.info(f"匹配成功! 设备ID: {d_id}")
+                                        logger.info(f"通过设备ID匹配成功! 设备ID: {d_id}")
+                                        break
+                                    # 然后尝试通过IP匹配（优先数据包IP，这样可以支持模拟器的多设备场景）
+                                    elif device["ip"] == device_ip or device["ip"] == sender_ip:
+                                        matched_device_id = d_id
+                                        logger.info(f"通过IP匹配成功! 设备ID: {d_id}")
                                         break
                                 
                                 if not matched_device_id:
@@ -376,10 +382,10 @@ class RTKController:
                                     
                                     logger.debug(f"收到已注册RTK设备 {self.devices[matched_device_id]['name']} ({device_ip}) 数据: E={e:.3f}, N={n:.3f}, U={u:.3f}")
                                 else:
-                                    # 未注册设备，统一使用发送方IP记录（确保与扫描逻辑一致）
-                                    primary_ip = sender_ip  # 优先使用发送方IP
-                                    logger.info(f"收到来自未注册设备的RTK数据: {device_id} (发送方IP: {sender_ip}, 数据包IP: {device_ip})")
-                                    self.unregistered_ips[primary_ip] = {
+                                    # 未注册设备，使用数据包中的设备IP作为键，这样可以正确区分多个模拟设备
+                                    key_ip = device_ip if device_ip else sender_ip
+                                    logger.info(f"收到来自未注册设备的RTK数据: {device_id} (发送方IP: {sender_ip}, 数据包IP: {device_ip}, 使用键: {key_ip})")
+                                    self.unregistered_ips[key_ip] = {
                                         "time": current_time,
                                         "device_id": device_id,
                                         "sender_ip": sender_ip,
