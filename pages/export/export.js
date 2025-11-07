@@ -1,4 +1,6 @@
 // pages/export/export.js
+const studentRecords = require('../../utils/studentRecords.js')
+
 Page({
   data: {
     username: '',
@@ -6,7 +8,9 @@ Page({
     authenticated: false,
     agreementCount: 0,
     registrationCount: 0,
-    totalCount: 0
+    totalCount: 0,
+    totalStudents: 0,      // 新增: 总学生数
+    bothSubmitted: 0        // 新增: 两种都提交的学生数
   },
 
   onLoad() {
@@ -26,13 +30,15 @@ Page({
   },
 
   loadStats() {
-    const agreementData = wx.getStorageSync('agreementData') || []
-    const registrationData = wx.getStorageSync('registrationData') || []
+    // 使用新的统计工具
+    const stats = studentRecords.getStatistics()
     
     this.setData({
-      agreementCount: agreementData.length,
-      registrationCount: registrationData.length,
-      totalCount: agreementData.length + registrationData.length
+      agreementCount: stats.agreementCount,
+      registrationCount: stats.registrationCount,
+      totalStudents: stats.totalStudents,
+      bothSubmitted: stats.bothSubmitted,
+      totalCount: stats.totalRecords
     })
   },
 

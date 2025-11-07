@@ -98,11 +98,26 @@
   border-bottom: none;
 }
 
+.stat-item.highlight {
+  background-color: #FFB414;
+  border-radius: 10rpx;
+  padding: 20rpx 30rpx;
+  border-bottom: none;
+  margin-bottom: 40rpx;
+}
+
+.stat-item.highlight .stat-label,
+.stat-item.highlight .stat-value {
+  color: #ffffff;
+  font-weight: bold;
+}
+
 .stat-item.total {
   background-color: #587558;
   border-radius: 10rpx;
   padding: 20rpx 30rpx;
   border-bottom: none;
+  margin-top: 20rpx;
 }
 
 .stat-item.total .stat-label,

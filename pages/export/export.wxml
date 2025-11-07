@@ -32,14 +32,24 @@
     <view class="export-title">数据导出</view>
     
     <view class="stats-container">
+      <view class="stat-item highlight">
+        <view class="stat-label">👥 总学生数</view>
+        <view class="stat-value">{{totalStudents}}人</view>
+      </view>
+
       <view class="stat-item">
-        <view class="stat-label">就业协议书记录</view>
-        <view class="stat-value">{{agreementCount}}条</view>
+        <view class="stat-label">就业协议书</view>
+        <view class="stat-value">{{agreementCount}}人</view>
       </view>
       
       <view class="stat-item">
-        <view class="stat-label">就业推荐表记录</view>
-        <view class="stat-value">{{registrationCount}}条</view>
+        <view class="stat-label">就业推荐表</view>
+        <view class="stat-value">{{registrationCount}}人</view>
+      </view>
+
+      <view class="stat-item">
+        <view class="stat-label">两种都提交</view>
+        <view class="stat-value">{{bothSubmitted}}人</view>
       </view>
       
       <view class="stat-item total">
