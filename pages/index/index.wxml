@@ -1,0 +1,23 @@
+<!--index.wxml-->
+<view class="container">
+  <view class="title">盖章统计小程序</view>
+  
+  <view class="button-container">
+    <button 
+      class="action-button {{registerActive ? 'active' : ''}}" 
+      bindtouchstart="onRegisterTouchStart"
+      bindtouchend="onRegisterTouchEnd"
+      bindtap="goToRegister">
+      签章登记
+    </button>
+    
+    <button 
+      class="action-button {{exportActive ? 'active' : ''}}" 
+      bindtouchstart="onExportTouchStart"
+      bindtouchend="onExportTouchEnd"
+      bindtap="goToExport">
+      数据导出
+    </button>
+  </view>
+</view>
+

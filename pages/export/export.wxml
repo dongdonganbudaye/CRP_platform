@@ -1,0 +1,68 @@
+<!--pages/export/export.wxml-->
+<view class="container">
+  <view class="form-container" wx:if="{{!authenticated}}">
+    <view class="form-title">数据导出</view>
+    <view class="form-subtitle">请先登录验证</view>
+    
+    <view class="form-group">
+      <view class="label">账号</view>
+      <input 
+        class="input" 
+        placeholder="请输入账号" 
+        value="{{username}}"
+        bindinput="onUsernameInput"
+      />
+    </view>
+
+    <view class="form-group">
+      <view class="label">密码</view>
+      <input 
+        class="input" 
+        placeholder="请输入密码" 
+        type="password"
+        value="{{password}}"
+        bindinput="onPasswordInput"
+      />
+    </view>
+
+    <button class="login-button" bindtap="onLogin">登录</button>
+  </view>
+
+  <view class="export-container" wx:else>
+    <view class="export-title">数据导出</view>
+    
+    <view class="stats-container">
+      <view class="stat-item">
+        <view class="stat-label">就业协议书记录</view>
+        <view class="stat-value">{{agreementCount}}条</view>
+      </view>
+      
+      <view class="stat-item">
+        <view class="stat-label">报到证记录</view>
+        <view class="stat-value">{{registrationCount}}条</view>
+      </view>
+      
+      <view class="stat-item total">
+        <view class="stat-label">总记录数</view>
+        <view class="stat-value">{{totalCount}}条</view>
+      </view>
+    </view>
+
+    <view class="button-group">
+      <button class="export-button" bindtap="exportAgreement">
+        导出就业协议书数据
+      </button>
+      
+      <button class="export-button" bindtap="exportRegistration">
+        导出报到证数据
+      </button>
+      
+      <button class="export-button" bindtap="exportAll">
+        导出所有数据
+      </button>
+    </view>
+
+    <button class="logout-button" bindtap="onLogout">退出登录</button>
+  </view>
+</view>
+

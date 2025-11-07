@@ -1,0 +1,19 @@
+# 微信小程序
+.DS_Store
+node_modules/
+miniprogram_npm/
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+
+# 编辑器
+.vscode/
+.idea/
+
+# 系统文件
+Thumbs.db
+

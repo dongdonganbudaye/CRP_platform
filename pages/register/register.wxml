@@ -1,0 +1,49 @@
+<!--pages/register/register.wxml-->
+<view class="container">
+  <view class="form-container">
+    <view class="form-title">签章登记</view>
+    
+    <view class="form-group">
+      <view class="label">签章资料持有人姓名</view>
+      <input 
+        class="input" 
+        placeholder="请输入姓名" 
+        value="{{name}}"
+        bindinput="onNameInput"
+      />
+    </view>
+
+    <view class="form-group">
+      <view class="label">签章资料持有人一卡通号</view>
+      <input 
+        class="input" 
+        placeholder="请输入一卡通号" 
+        value="{{cardNumber}}"
+        bindinput="onCardNumberInput"
+      />
+    </view>
+
+    <view class="form-group">
+      <view class="label">签章资料名称</view>
+      <picker 
+        class="picker" 
+        mode="selector" 
+        range="{{documentTypes}}"
+        value="{{documentIndex}}"
+        bindchange="onDocumentChange">
+        <view class="picker-content">
+          {{documentTypes[documentIndex]}}
+        </view>
+      </picker>
+    </view>
+
+    <button 
+      class="submit-button {{submitActive ? 'active' : ''}}" 
+      bindtouchstart="onSubmitTouchStart"
+      bindtouchend="onSubmitTouchEnd"
+      bindtap="onSubmit">
+      提交
+    </button>
+  </view>
+</view>
+

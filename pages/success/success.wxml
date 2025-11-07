@@ -1,0 +1,30 @@
+<!--pages/success/success.wxml-->
+<view class="container">
+  <view class="success-icon">✓</view>
+  <view class="success-title">已成功提交</view>
+  
+  <view class="info-container">
+    <view class="info-item">
+      <view class="info-label">签章资料持有人姓名:</view>
+      <view class="info-value">{{name}}</view>
+    </view>
+    
+    <view class="info-item">
+      <view class="info-label">签章资料持有人一卡通号:</view>
+      <view class="info-value">{{cardNumber}}</view>
+    </view>
+    
+    <view class="info-item">
+      <view class="info-label">签章资料名称:</view>
+      <view class="info-value">{{documentType}}</view>
+    </view>
+    
+    <view class="info-item">
+      <view class="info-label">提交时间:</view>
+      <view class="info-value">{{dateTime}}</view>
+    </view>
+  </view>
+
+  <button class="back-button" bindtap="goBack">返回首页</button>
+</view>
+
