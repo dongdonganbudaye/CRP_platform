@@ -9,7 +9,7 @@ function getAgreementData() {
 }
 
 /**
- * 获取报到证数据
+ * 获取就业推荐表数据
  */
 function getRegistrationData() {
   return wx.getStorageSync('registrationData') || []
@@ -23,7 +23,7 @@ function saveAgreementData(data) {
 }
 
 /**
- * 保存报到证数据
+ * 保存就业推荐表数据
  */
 function saveRegistrationData(data) {
   wx.setStorageSync('registrationData', data)
@@ -35,7 +35,7 @@ function saveRegistrationData(data) {
 function getDataByType(type) {
   if (type === '就业协议书') {
     return getAgreementData()
-  } else if (type === '报到证') {
+  } else if (type === '就业推荐表') {
     return getRegistrationData()
   }
   return []
@@ -47,7 +47,7 @@ function getDataByType(type) {
 function saveDataByType(type, data) {
   if (type === '就业协议书') {
     saveAgreementData(data)
-  } else if (type === '报到证') {
+  } else if (type === '就业推荐表') {
     saveRegistrationData(data)
   }
 }

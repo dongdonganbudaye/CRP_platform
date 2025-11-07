@@ -38,7 +38,7 @@
       </view>
       
       <view class="stat-item">
-        <view class="stat-label">报到证记录</view>
+        <view class="stat-label">就业推荐表记录</view>
         <view class="stat-value">{{registrationCount}}条</view>
       </view>
       
@@ -54,7 +54,7 @@
       </button>
       
       <button class="export-button" bindtap="exportRegistration">
-        导出报到证数据
+        导出就业推荐表数据
       </button>
       
       <button class="export-button" bindtap="exportAll">

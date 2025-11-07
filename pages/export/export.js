@@ -116,20 +116,20 @@ Page({
     this.exportData(agreementData, '就业协议书数据')
   },
 
-  // 导出报到证数据
+  // 导出就业推荐表数据
   exportRegistration() {
     const registrationData = wx.getStorageSync('registrationData') || []
     
     if (registrationData.length === 0) {
       wx.showModal({
         title: '提示',
-        content: '报到证暂无数据',
+        content: '就业推荐表暂无数据',
         showCancel: false
       })
       return
     }
 
-    this.exportData(registrationData, '报到证数据')
+    this.exportData(registrationData, '就业推荐表数据')
   },
 
   // 导出所有数据
